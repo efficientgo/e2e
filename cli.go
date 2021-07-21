@@ -10,16 +10,14 @@ import (
 )
 
 func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
-	cmd := exec.Command(name, args...)
-	return cmd.CombinedOutput()
+	return exec.Command(name, args...).CombinedOutput()
 }
 
 func RunCommandWithTimeoutAndGetOutput(timeout time.Duration, name string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, name, args...)
-	return cmd.CombinedOutput()
+	return exec.CommandContext(ctx, name, args...).CombinedOutput()
 }
 
 func EmptyFlags() map[string]string {
@@ -34,7 +32,6 @@ func MergeFlags(inputs ...map[string]string) map[string]string {
 			delete(output, k)
 		}
 	}
-
 	return output
 }
 
@@ -46,7 +43,6 @@ func MergeFlagsWithoutRemovingEmpty(inputs ...map[string]string) map[string]stri
 			output[name] = value
 		}
 	}
-
 	return output
 }
 
@@ -60,6 +56,5 @@ func BuildArgs(flags map[string]string) []string {
 			args = append(args, name)
 		}
 	}
-
 	return args
 }

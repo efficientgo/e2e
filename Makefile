@@ -91,7 +91,7 @@ lint: $(FAILLINT) $(GOLANGCI_LINT) $(MISSPELL) $(COPYRIGHT) build format docs ch
 	@echo ">> verifying imported "
 	for dir in $(MODULES) ; do \
 		cd $${dir} && $(FAILLINT) -paths "fmt.{Print,PrintfPrintln,Sprint}" -ignore-tests ./... && \
-		$(FAILLINT) -paths "github.com/stretchr/testify=github.com/efficientgo/tools/core/pkg/testutil" ./...; \
+		$(FAILLINT) -paths "github.com/stretchr/testify=github.com/efficientgo/tools/core/pkg/testutil,fmt.{Errorf}=github.com/pkg/errors" ./...; \
 	done
 	@echo ">> examining all of the Go files"
 	for dir in $(MODULES) ; do \

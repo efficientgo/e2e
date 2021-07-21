@@ -1,4 +1,4 @@
-module github.com/efficientgo/tools/e2e/example/tns
+module github.com/efficientgo/e2e/examples/unittest
 
 go 1.15
 

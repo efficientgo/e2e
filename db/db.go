@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/efficientgo/tools/e2e"
+	"github.com/efficientgo/e2e"
 )
 
 const (
@@ -143,8 +143,8 @@ func (b Builder) NewSwiftStorage() *e2e.HTTPService {
 	)
 }
 
-func (b Builder) NewMemcached() *e2e.ConcreteService {
-	return e2e.NewConcreteService(
+func (b Builder) NewMemcached() *e2e.Service {
+	return e2e.NewService(
 		"memcached",
 		b.MemcachedImage,
 		nil,
