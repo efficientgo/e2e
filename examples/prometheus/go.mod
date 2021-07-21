@@ -1,10 +1,11 @@
-module github.com/efficientgo/e2e/examples/unittest
+module github.com/efficientgo/e2e/examples/prometheus
 
-go 1.15
+go 1.16
 
 require (
 	github.com/efficientgo/tools/core v0.0.0-20210129205121-421d0828c9a6
 	github.com/go-kit/kit v0.10.0
+	github.com/efficientgo/e2e v0.1.0
 		github.com/oklog/run v1.1.0
 	github.com/minio/minio-go/v7 v7.0.7
 	github.com/pkg/errors v0.9.1
@@ -12,4 +13,8 @@ require (
 	github.com/prometheus/common v0.15.0
 	gopkg.in/yaml.v2 v2.3.0
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
+)
+
+replace (
+	github.com/efficientgo/e2e v0.1.0 => ../../
 )

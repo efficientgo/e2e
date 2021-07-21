@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -13,17 +12,35 @@ import (
 	"github.com/pkg/errors"
 )
 
-type EnvironmentConstructor func(logger Logger, envName string) (Environment, error)
+// EnvironmentOption defined the signature of a function used to manipulate options.
+type EnvironmentOption func(*environmentOptions)
+
+type environmentOptions struct {
+	envName string
+	logger  Logger
+}
+
+// WithEnvironmentName tells scenario to use custom environment name instead of UUID.
+// Prefer reusing names so no hanging environments are registered.
+func WithEnvironmentName(envName string) EnvironmentOption {
+	return func(o *environmentOptions) {
+		o.envName = envName
+	}
+}
+
+// WithLogger tells scenario to use custom logger to default one (stdout).
+func WithLogger(logger Logger) EnvironmentOption {
+	return func(o *environmentOptions) {
+		o.logger = logger
+	}
+}
 
 // Environment defines how to run Runnable in isolated area e.g via docker in isolated docker network.
 type Environment interface {
-	// HostDir returns host working directory path for the runnable with name "name" on this environment.
-	HostDir(name string) string
-	// LocalDir returns local working directory path for the runnable with name "name" on this environment.
-	LocalDir(name string) string
+	SharedDir() string
 
-	// Start starts runnable using given options.
-	Start(opts StartOptions) (Started, error)
+	// Runnable returns instance of runnable which can be started and stopped within this environment.
+	Runnable(opts StartOptions) Runnable
 
 	// Close shutdowns isolated environment and cleans it's resources.
 	Close()
@@ -41,29 +58,33 @@ type StartOptions struct {
 	WaitReadyBackoff *backoff.Config
 }
 
-// StartedRunnable is the started entity that Scenario can manage.
-// This interface has private methods to ensure that only scenario can manage it.
-type StartedRunnable interface {
-	// waitReady waits until the Runnable is ready. It should return error if service is stopped in mean time or
+// Runnable is the entity that environment returns to manage single instance.
+type Runnable interface {
+	// Name returns unique name for the Runnable instance.
+	Name() string
+
+	// HostDir returns host working directory path for this runnable.
+	HostDir() string
+	// LocalDir returns local working directory path for this runnable.
+	LocalDir() string
+
+	// Start tells Runnable to start.
+	Start() error
+
+	// WaitReady waits until the Runnable is ready. It should return error if runnable is stopped in mean time or
 	// it was stopped before.
-	waitReady() error
+	WaitReady() error
 
-	// kill tells Runnable to get killed immediately.
+	// Kill tells Runnable to get killed immediately.
 	// It should be ok to Stop and Kill more than once, with next invokes being noop.
-	kill() error
+	Kill() error
 
-	// stop tells Runnable to get gracefully stopped.
+	// Stop tells Runnable to get gracefully stopped.
 	// It should be ok to Stop and Kill more than once, with next invokes being noop.
-	stop() error
-}
+	Stop() error
 
-// Started is the started entity.
-type Started interface {
-	StartedRunnable
-
-	// Exec runs the provided command against a the docker container specified by this
-	// service. It returns the stdout, stderr, and error response from attempting
-	// to run the command.
+	// Exec runs the provided command inside the same process context (e.g in the docker container).
+	// It returns the stdout, stderr, and error response from attempting to run the command.
 	Exec(command *Command) (string, string, error)
 
 	// Endpoint returns external (from host perspective) service endpoint (host:port) for given port name.
@@ -88,29 +109,18 @@ type Started interface {
 	NetworkEndpointFor(networkName string, portName string) string
 }
 
-var _ Started = NotStarted{}
-
-type NotStarted struct {
-	name         string
-	networkPorts map[string]int
-}
-
-func (n NotStarted) waitReady() error { return errors.Errorf("service %v not started", n.name) }
-
-func (n NotStarted) kill() error { return nil }
-
-func (n NotStarted) stop() error { return nil }
-
-func (n NotStarted) Exec(_ *Command) (string, string, error) {
-	return "", "", errors.Errorf("service %v not started", n.name)
-}
-
-func (n NotStarted) Endpoint(_ string) string { return "not started" }
-
-func (n NotStarted) NetworkEndpoint(_ string) string { return "not started" }
-
-func (n NotStarted) NetworkEndpointFor(networkName string, portName string) string {
-	return dockerNetworkContainerHostPort(networkName, n.name, n.networkPorts[portName])
+func StartAndWaitReady(runnables ...Runnable) error {
+	for _, r := range runnables {
+		if err := r.Start(); err != nil {
+			return err
+		}
+	}
+	for _, r := range runnables {
+		if err := r.WaitReady(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type Command struct {
@@ -135,21 +145,21 @@ func NewCommandWithoutEntrypoint(cmd string, args ...string) *Command {
 }
 
 type ReadinessProbe interface {
-	Ready(runnable Started) (err error)
+	Ready(runnable Runnable) (err error)
 }
 
 // HTTPReadinessProbe checks readiness by making HTTP call and checking for expected HTTP status code.
 type HTTPReadinessProbe struct {
-	port                     int
+	portName                 string
 	path                     string
 	expectedStatusRangeStart int
 	expectedStatusRangeEnd   int
 	expectedContent          []string
 }
 
-func NewHTTPReadinessProbe(port int, path string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
+func NewHTTPReadinessProbe(portName string, path string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
 	return &HTTPReadinessProbe{
-		port:                     port,
+		portName:                 portName,
 		path:                     path,
 		expectedStatusRangeStart: expectedStatusRangeStart,
 		expectedStatusRangeEnd:   expectedStatusRangeEnd,
@@ -157,11 +167,12 @@ func NewHTTPReadinessProbe(port int, path string, expectedStatusRangeStart, expe
 	}
 }
 
-func (p *HTTPReadinessProbe) Ready(service *Service) (err error) {
-	endpoint := service.Endpoint(p.port)
+func (p *HTTPReadinessProbe) Ready(runnable Runnable) (err error) {
+	endpoint := runnable.Endpoint(p.portName)
 	if endpoint == "" {
-		return fmt.Errorf("cannot get service endpoint for port %d", p.port)
-	} else if endpoint == "stopped" {
+		return errors.Errorf("cannot get service endpoint for port %s", p.portName)
+	}
+	if endpoint == "stopped" {
 		return errors.New("service has stopped")
 	}
 
@@ -174,33 +185,32 @@ func (p *HTTPReadinessProbe) Ready(service *Service) (err error) {
 	body, _ := ioutil.ReadAll(res.Body)
 
 	if res.StatusCode < p.expectedStatusRangeStart || res.StatusCode > p.expectedStatusRangeEnd {
-		return fmt.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
+		return errors.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
 	}
 
 	for _, expected := range p.expectedContent {
 		if !strings.Contains(string(body), expected) {
-			return fmt.Errorf("expected body containing %s, got: %v", expected, string(body))
+			return errors.Errorf("expected body containing %s, got: %v", expected, string(body))
 		}
 	}
-
 	return nil
 }
 
 // TCPReadinessProbe checks readiness by ensure a TCP connection can be established.
 type TCPReadinessProbe struct {
-	port int
+	portName string
 }
 
-func NewTCPReadinessProbe(port int) *TCPReadinessProbe {
+func NewTCPReadinessProbe(portName string) *TCPReadinessProbe {
 	return &TCPReadinessProbe{
-		port: port,
+		portName: portName,
 	}
 }
 
-func (p *TCPReadinessProbe) Ready(service *Service) (err error) {
-	endpoint := service.Endpoint(p.port)
+func (p *TCPReadinessProbe) Ready(runnable Runnable) (err error) {
+	endpoint := runnable.Endpoint(p.portName)
 	if endpoint == "" {
-		return fmt.Errorf("cannot get service endpoint for port %d", p.port)
+		return errors.Errorf("cannot get service endpoint for port %s", p.portName)
 	} else if endpoint == "stopped" {
 		return errors.New("service has stopped")
 	}
@@ -222,7 +232,7 @@ func NewCmdReadinessProbe(cmd *Command) *CmdReadinessProbe {
 	return &CmdReadinessProbe{cmd: cmd}
 }
 
-func (p *CmdReadinessProbe) Ready(service *Service) error {
-	_, _, err := service.Exec(p.cmd)
+func (p *CmdReadinessProbe) Ready(runnable Runnable) error {
+	_, _, err := runnable.Exec(p.cmd)
 	return err
 }
