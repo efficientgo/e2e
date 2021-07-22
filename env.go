@@ -38,35 +38,52 @@ func WithLogger(logger Logger) EnvironmentOption {
 // Environment defines how to run Runnable in isolated area e.g via docker in isolated docker network.
 type Environment interface {
 	SharedDir() string
-
+	// FutureRunnable returns instance of runnable which can be started and stopped within this environment.
+	FutureRunnable(name string, Ports map[string]int) FutureRunnable
 	// Runnable returns instance of runnable which can be started and stopped within this environment.
-	Runnable(opts StartOptions) Runnable
-
+	Runnable(name string, Ports map[string]int, opts StartOptions) Runnable
 	// Close shutdowns isolated environment and cleans it's resources.
 	Close()
 }
 
 type StartOptions struct {
-	Name         string
-	Image        string
-	EnvVars      map[string]string
-	User         string
-	Command      *Command
-	NetworkPorts map[string]int
-	Readiness    ReadinessProbe
+	Image     string
+	EnvVars   map[string]string
+	User      string
+	Command   *Command
+	Readiness ReadinessProbe
 	// WaitReadyBackoff represents backoff used for WaitReady.
 	WaitReadyBackoff *backoff.Config
 }
 
-// Runnable is the entity that environment returns to manage single instance.
-type Runnable interface {
+// Linkable is the entity that one can use to link.
+type Linkable interface {
 	// Name returns unique name for the Runnable instance.
 	Name() string
 
 	// HostDir returns host working directory path for this runnable.
 	HostDir() string
+
 	// LocalDir returns local working directory path for this runnable.
 	LocalDir() string
+
+	// NetworkEndpoint returns internal service endpoint (host:port) for given internal port.
+	// Internal means that it will be accessible only from docker containers within the network that this
+	// service is running in. If you configure your local resolver with docker DNS namespace you can access it from host
+	// as well. Use `Endpoint` for host access.
+	NetworkEndpoint(portName string) string
+}
+
+// FutureRunnable is the entity that one can use to link to future runnable.
+type FutureRunnable interface {
+	Linkable
+
+	Runnable(opts StartOptions) Runnable
+}
+
+// Runnable is the entity that environment returns to manage single instance.
+type Runnable interface {
+	Linkable
 
 	// Start tells Runnable to start.
 	Start() error
@@ -92,21 +109,6 @@ type Runnable interface {
 	//
 	// If your service is not running, this method returns incorrect `stopped` endpoint.
 	Endpoint(portName string) string
-
-	// NetworkEndpoint returns internal service endpoint (host:port) for given internal port.
-	// Internal means that it will be accessible only from docker containers within the network that this
-	// service is running in. If you configure your local resolver with docker DNS namespace you can access it from host
-	// as well. Use `Endpoint` for host access.
-	//
-	// If your service is not running, use `NetworkEndpointFor` instead.
-	NetworkEndpoint(portName string) string
-
-	// NetworkEndpointFor returns internal service endpoint (host:port) for given internal port and network.
-	// Internal means that it will be accessible only from docker containers within the given network. If you configure
-	// your local resolver with docker DNS namespace you can access it from host as well.
-	//
-	// This method return correct endpoint for the service in any state.
-	NetworkEndpointFor(networkName string, portName string) string
 }
 
 func StartAndWaitReady(runnables ...Runnable) error {
@@ -180,10 +182,9 @@ func (p *HTTPReadinessProbe) Ready(runnable Runnable) (err error) {
 	if err != nil {
 		return err
 	}
-
 	defer errcapture.ExhaustClose(&err, res.Body, "response readiness")
-	body, _ := ioutil.ReadAll(res.Body)
 
+	body, _ := ioutil.ReadAll(res.Body)
 	if res.StatusCode < p.expectedStatusRangeStart || res.StatusCode > p.expectedStatusRangeEnd {
 		return errors.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
 	}
