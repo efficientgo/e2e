@@ -50,14 +50,14 @@ func Default() Builder {
 }
 
 // NewMinio returns minio server, used as a local replacement for S3.
-func (b Builder) NewMinio(bktName string) *e2e.HTTPService {
+func (b Builder) NewMinio(bktName string) *e2e.InstrumentedRunnable {
 	minioKESGithubContent := "https://raw.githubusercontent.com/minio/kes/master"
 	commands := []string{
 		"curl -sSL --tlsv1.2 -O '%s/root.key'	-O '%s/root.cert'",
 		"mkdir -p /data/%s && minio server --address :%v --quiet /data",
 	}
 
-	m := e2e.NewHTTPService(
+	m := e2e.NewInstrumentedRunnable(
 		fmt.Sprintf("minio-%v", b.MinioHTTPPort),
 		b.MinioImage,
 		// Create the required bucket before starting minio.
@@ -79,8 +79,8 @@ func (b Builder) NewMinio(bktName string) *e2e.HTTPService {
 	return m
 }
 
-func (b Builder) NewConsul() *e2e.HTTPService {
-	return e2e.NewHTTPService(
+func (b Builder) NewConsul() *e2e.InstrumentedRunnable {
+	return e2e.NewInstrumentedRunnable(
 		"consul",
 		b.ConsulImage,
 		// Run consul in "dev" mode so that the initial leader election is immediate.
@@ -90,8 +90,8 @@ func (b Builder) NewConsul() *e2e.HTTPService {
 	)
 }
 
-func (b Builder) NewETCD() *e2e.HTTPService {
-	return e2e.NewHTTPService(
+func (b Builder) NewETCD() *e2e.InstrumentedRunnable {
+	return e2e.NewInstrumentedRunnable(
 		"etcd",
 		b.EtcdImage,
 		e2e.NewCommand("/usr/local/bin/etcd", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://0.0.0.0:2379", "--listen-metrics-urls=http://0.0.0.0:9000", "--log-level=error"),
@@ -101,8 +101,8 @@ func (b Builder) NewETCD() *e2e.HTTPService {
 	)
 }
 
-func (b Builder) NewDynamoDB() *e2e.HTTPService {
-	return e2e.NewHTTPService(
+func (b Builder) NewDynamoDB() *e2e.InstrumentedRunnable {
+	return e2e.NewInstrumentedRunnable(
 		"dynamodb",
 		b.DynamoDBImage,
 		e2e.NewCommand("-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"),
@@ -112,8 +112,8 @@ func (b Builder) NewDynamoDB() *e2e.HTTPService {
 	)
 }
 
-func (b Builder) NewBigtable() *e2e.HTTPService {
-	return e2e.NewHTTPService(
+func (b Builder) NewBigtable() *e2e.InstrumentedRunnable {
+	return e2e.NewInstrumentedRunnable(
 		"bigtable",
 		b.BigtableEmulatorImage,
 		nil,
@@ -122,8 +122,8 @@ func (b Builder) NewBigtable() *e2e.HTTPService {
 	)
 }
 
-func (b Builder) NewCassandra() *e2e.HTTPService {
-	return e2e.NewHTTPService(
+func (b Builder) NewCassandra() *e2e.InstrumentedRunnable {
+	return e2e.NewInstrumentedRunnable(
 		"cassandra",
 		b.CassandraImage,
 		nil,
@@ -133,8 +133,8 @@ func (b Builder) NewCassandra() *e2e.HTTPService {
 	)
 }
 
-func (b Builder) NewSwiftStorage() *e2e.HTTPService {
-	return e2e.NewHTTPService(
+func (b Builder) NewSwiftStorage() *e2e.InstrumentedRunnable {
+	return e2e.NewInstrumentedRunnable(
 		"swift",
 		b.SwiftEmulatorImage,
 		nil,

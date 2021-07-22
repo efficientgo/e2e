@@ -71,8 +71,8 @@ metric_b_summary_count 1
 		_ = srv.Serve(ln)
 	}()
 
-	s := &HTTPService{
-		httpPortName: "http",
+	s := &InstrumentedRunnable{
+		metricPortName: "http",
 		Runnable: &dockerRunnable{
 			hostPorts:       map[string]int{"http": port},
 			usedNetworkName: "hack",
@@ -154,8 +154,8 @@ metric_b 1000
 		_ = srv.Serve(ln)
 	}()
 
-	s := &HTTPService{
-		httpPortName: "http",
+	s := &InstrumentedRunnable{
+		metricPortName: "http",
 		Runnable: &dockerRunnable{
 			hostPorts:       map[string]int{"http": port},
 			usedNetworkName: "hack",

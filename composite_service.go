@@ -12,15 +12,15 @@ import (
 	"github.com/pkg/errors"
 )
 
-// CompositeHTTPService abstract an higher-level service composed by more than one HTTPService.
+// CompositeHTTPService abstract an higher-level service composed by more than one InstrumentedRunnable.
 type CompositeHTTPService struct {
-	services []*HTTPService
+	services []*InstrumentedRunnable
 
 	// Generic retry backoff.
 	backoff *backoff.Backoff
 }
 
-func NewCompositeHTTPService(services ...*HTTPService) *CompositeHTTPService {
+func NewCompositeHTTPService(services ...*InstrumentedRunnable) *CompositeHTTPService {
 	return &CompositeHTTPService{
 		services: services,
 		backoff: backoff.New(context.Background(), backoff.Config{
@@ -35,7 +35,7 @@ func (s *CompositeHTTPService) NumInstances() int {
 	return len(s.services)
 }
 
-func (s *CompositeHTTPService) Instances() []*HTTPService {
+func (s *CompositeHTTPService) Instances() []*InstrumentedRunnable {
 	return s.services
 }
 

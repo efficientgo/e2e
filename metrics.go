@@ -144,8 +144,10 @@ func EqualsSingle(expected float64) func(float64) bool {
 	}
 }
 
-// Equals is an isExpected function for WaitSumMetrics that returns true if given single sum is equals to given value.
-func Equals(value float64) func(sums ...float64) bool {
+type MetricValueExpectation func(sums ...float64) bool
+
+// Equals is an MetricValueExpectation function for WaitSumMetrics that returns true if given single sum is equals to given value.
+func Equals(value float64) MetricValueExpectation {
 	return func(sums ...float64) bool {
 		if len(sums) != 1 {
 			panic("equals: expected one value")
@@ -155,7 +157,7 @@ func Equals(value float64) func(sums ...float64) bool {
 }
 
 // Greater is an isExpected function for WaitSumMetrics that returns true if given single sum is greater than given value.
-func Greater(value float64) func(sums ...float64) bool {
+func Greater(value float64) MetricValueExpectation {
 	return func(sums ...float64) bool {
 		if len(sums) != 1 {
 			panic("greater: expected one value")
@@ -165,7 +167,7 @@ func Greater(value float64) func(sums ...float64) bool {
 }
 
 // GreaterOrEqual is an isExpected function for WaitSumMetrics that returns true if given single sum is greater or equal than given value.
-func GreaterOrEqual(value float64) func(sums ...float64) bool {
+func GreaterOrEqual(value float64) MetricValueExpectation {
 	return func(sums ...float64) bool {
 		if len(sums) != 1 {
 			panic("greater: expected one value")
@@ -175,7 +177,7 @@ func GreaterOrEqual(value float64) func(sums ...float64) bool {
 }
 
 // Less is an isExpected function for WaitSumMetrics that returns true if given single sum is less than given value.
-func Less(value float64) func(sums ...float64) bool {
+func Less(value float64) MetricValueExpectation {
 	return func(sums ...float64) bool {
 		if len(sums) != 1 {
 			panic("less: expected one value")

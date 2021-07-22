@@ -38,10 +38,10 @@ func WithLogger(logger Logger) EnvironmentOption {
 // Environment defines how to run Runnable in isolated area e.g via docker in isolated docker network.
 type Environment interface {
 	SharedDir() string
-	// FutureRunnable returns instance of runnable which can be started and stopped within this environment.
-	FutureRunnable(name string, Ports map[string]int) FutureRunnable
 	// Runnable returns instance of runnable which can be started and stopped within this environment.
 	Runnable(name string, Ports map[string]int, opts StartOptions) Runnable
+	// FutureRunnable returns instance of runnable which can be started and stopped within this environment.
+	FutureRunnable(name string, Ports map[string]int) FutureRunnable
 	// Close shutdowns isolated environment and cleans it's resources.
 	Close()
 }
@@ -56,7 +56,7 @@ type StartOptions struct {
 	WaitReadyBackoff *backoff.Config
 }
 
-// Linkable is the entity that one can use to link.
+// Linkable is the entity that one can use to link runnable to other runnables before started.
 type Linkable interface {
 	// Name returns unique name for the Runnable instance.
 	Name() string
@@ -74,11 +74,11 @@ type Linkable interface {
 	NetworkEndpoint(portName string) string
 }
 
-// FutureRunnable is the entity that one can use to link to future runnable.
 type FutureRunnable interface {
 	Linkable
 
-	Runnable(opts StartOptions) Runnable
+	// Init transforms future into runnable.
+	Init(opts StartOptions) Runnable
 }
 
 // Runnable is the entity that environment returns to manage single instance.
