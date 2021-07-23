@@ -1,129 +1,88 @@
 package e2e_test
 
 import (
-	"fmt"
 	"io/ioutil"
-	"os"
+	"net/http"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/efficientgo/e2e"
+	e2edb "github.com/efficientgo/e2e/db"
 	"github.com/efficientgo/tools/core/pkg/testutil"
-	"github.com/pkg/errors"
 )
 
-func promConfig(name string, replica int, remoteWriteEntry, ruleFile string, scrapeTargets ...string) string {
-	targets := "localhost:9090"
-	if len(scrapeTargets) > 0 {
-		targets = strings.Join(scrapeTargets, ",")
-	}
-	config := fmt.Sprintf(`
-global:
-  external_labels:
-    prometheus: %v
-    replica: %v
-scrape_configs:
-- job_name: 'myself'
-  # Quick scrapes for test purposes.
-  scrape_interval: 1s
-  scrape_timeout: 1s
-  static_configs:
-  - targets: [%s]
-  relabel_configs:
-  - source_labels: ['__address__']
-    regex: '^.+:80$'
-    action: drop
-`, name, replica, targets)
-
-	if remoteWriteEntry != "" {
-		config = fmt.Sprintf(`
-%s
-%s
-`, config, remoteWriteEntry)
-	}
-
-	if ruleFile != "" {
-		config = fmt.Sprintf(`
-%s
-rule_files:
--  "%s"
-`, config, ruleFile)
-	}
-
-	return config
+func wgetFlagsCmd(hostPort string) e2e.Command {
+	return e2e.NewCommandWithoutEntrypoint("/bin/sh", "-c", "wget http://"+hostPort+"/api/v1/status/flags -O /tmp/flags && cat /tmp/flags")
 }
 
-func newPrometheus(env e2e.Environment, name string) (*e2e.InstrumentedRunnable, error) {
-	ports := map[string]int{"http": 9090}
+func TestDockerEnvironment(t *testing.T) {
+	t.Parallel()
 
-	f := e2e.NewFutureInstrumentedRunnable(env, name, ports, "http")
-	if err := os.MkdirAll(f.HostDir(), 0750); err != nil {
-		return nil, errors.Wrap(err, "create prometheus dir")
-	}
+	e, err := e2e.NewDockerEnvironment("e2e_lifecycle")
+	testutil.Ok(t, err)
+	t.Cleanup(e.Close)
 
-	config := fmt.Sprintf(`
-global:
-  external_labels:
-    prometheus: %v
-scrape_configs:
-- job_name: 'myself'
-  # Quick scrapes for test purposes.
-  scrape_interval: 1s
-  scrape_timeout: 1s
-  static_configs:
-  - targets: [%s]
-  relabel_configs:
-  - source_labels: ['__address__']
-    regex: '^.+:80$'
-    action: drop
-`, name, f.NetworkEndpoint("http"))
-
-	if err := ioutil.WriteFile(filepath.Join(f.HostDir(), "prometheus.yml"), []byte(config), 0600); err != nil {
-		return nil, errors.Wrap(err, "creating prom config failed")
-	}
-
-	args := e2e.BuildArgs(map[string]string{
-		"--config.file":                     filepath.Join(f.LocalDir(), "prometheus.yml"),
-		"--storage.tsdb.path":               f.LocalDir(),
-		"--storage.tsdb.max-block-duration": "2h",
-		"--log.level":                       "info",
-		"--web.listen-address":              fmt.Sprintf(":%d", ports["http"]),
-	})
-
-	return f.Init(e2e.StartOptions{
-		Image:     "quay.io/prometheus/prometheus:v2.27.0",
-		Command:   e2e.NewCommandWithoutEntrypoint("prometheus", args...),
-		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
-		User:      strconv.Itoa(os.Getuid()),
-	}), nil
-}
-
-func TestDockerEnvLifecycle(t *testing.T) {
-	e, err := e2e.NewDockerEnvironment(e2e.WithEnvironmentName("e2e_lifecycle"))
+	p1, err := e2edb.NewPrometheus(e, "prometheus-1")
 	testutil.Ok(t, err)
 
-	var closed bool
-	t.Cleanup(func() {
-		if !closed {
-			e.Close()
-		}
-	})
+	testutil.Equals(t, "prometheus-1", p1.Name())
+	testutil.Equals(t, filepath.Join(e.SharedDir(), "data", p1.Name()), p1.HostDir())
+	testutil.Equals(t, filepath.Join("/shared", "data", p1.Name()), p1.LocalDir())
+	testutil.Equals(t, "e2e_lifecycle-prometheus-1:9090", p1.NetworkEndpoint("http"))
+	testutil.Equals(t, "", p1.NetworkEndpoint("not-existing"))
+	testutil.Assert(t, !p1.IsRunning())
 
-	p1, err := newPrometheus(e, "prometheus-1")
-	testutil.Ok(t, err)
-	p2, err := newPrometheus(e, "prometheus-2")
+	// Errors as p1 was not started yet.
+	testutil.NotOk(t, p1.WaitReady())
+	testutil.Ok(t, p1.Stop())
+	testutil.Ok(t, p1.Kill())
+
+	_, _, err = p1.Exec(wgetFlagsCmd("localhost:9090"))
+	testutil.NotOk(t, err)
+	testutil.Equals(t, "stopped", p1.Endpoint("http"))
+	testutil.Equals(t, "stopped", p1.Endpoint("not-existing"))
+
+	p2, err := e2edb.NewPrometheus(e, "prometheus-2")
 	testutil.Ok(t, err)
 
 	testutil.Ok(t, e2e.StartAndWaitReady(p1, p2))
 	testutil.Ok(t, p1.WaitReady())
 	testutil.Ok(t, p1.WaitReady())
 
-	//testutil.NotOk(t, p1.Start()) // Starting ok, should fail.
-
-	o, err := p1.Metrics()
-	testutil.Ok(t, err)
-	fmt.Println(o)
 	testutil.Ok(t, p1.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
+
+	testutil.Equals(t, "prometheus-1", p1.Name())
+	testutil.Equals(t, filepath.Join(e.SharedDir(), "data", p1.Name()), p1.HostDir())
+	testutil.Equals(t, filepath.Join("/shared", "data", p1.Name()), p1.LocalDir())
+	testutil.Equals(t, "e2e_lifecycle-prometheus-1:9090", p1.NetworkEndpoint("http"))
+	testutil.Equals(t, "", p1.NetworkEndpoint("not-existing"))
+	testutil.Assert(t, p1.IsRunning())
+
+	const (
+		expectedFlagsOutputProm1 = "{\"status\":\"success\",\"data\":{\"alertmanager.notification-queue-capacity\":\"10000\",\"alertmanager.timeout\":\"\",\"config.file\":\"/shared/data/prometheus-1/prometheus.yml\",\"enable-feature\":\"\",\"log.format\":\"logfmt\",\"log.level\":\"info\",\"query.lookback-delta\":\"5m\",\"query.max-concurrency\":\"20\",\"query.max-samples\":\"50000000\",\"query.timeout\":\"2m\",\"rules.alert.for-grace-period\":\"10m\",\"rules.alert.for-outage-tolerance\":\"1h\",\"rules.alert.resend-delay\":\"1m\",\"scrape.adjust-timestamps\":\"true\",\"storage.exemplars.exemplars-limit\":\"0\",\"storage.remote.flush-deadline\":\"1m\",\"storage.remote.read-concurrent-limit\":\"10\",\"storage.remote.read-max-bytes-in-frame\":\"1048576\",\"storage.remote.read-sample-limit\":\"50000000\",\"storage.tsdb.allow-overlapping-blocks\":\"false\",\"storage.tsdb.max-block-chunk-segment-size\":\"0B\",\"storage.tsdb.max-block-duration\":\"2h\",\"storage.tsdb.min-block-duration\":\"2h\",\"storage.tsdb.no-lockfile\":\"false\",\"storage.tsdb.path\":\"/shared/data/prometheus-1\",\"storage.tsdb.retention\":\"0s\",\"storage.tsdb.retention.size\":\"0B\",\"storage.tsdb.retention.time\":\"0s\",\"storage.tsdb.wal-compression\":\"true\",\"storage.tsdb.wal-segment-size\":\"0B\",\"web.config.file\":\"\",\"web.console.libraries\":\"console_libraries\",\"web.console.templates\":\"consoles\",\"web.cors.origin\":\".*\",\"web.enable-admin-api\":\"false\",\"web.enable-lifecycle\":\"false\",\"web.external-url\":\"\",\"web.listen-address\":\":9090\",\"web.max-connections\":\"512\",\"web.page-title\":\"Prometheus Time Series Collection and Processing Server\",\"web.read-timeout\":\"5m\",\"web.route-prefix\":\"/\",\"web.user-assets\":\"\"}}"
+		expectedFlagsOutputProm2 = "{\"status\":\"success\",\"data\":{\"alertmanager.notification-queue-capacity\":\"10000\",\"alertmanager.timeout\":\"\",\"config.file\":\"/shared/data/prometheus-2/prometheus.yml\",\"enable-feature\":\"\",\"log.format\":\"logfmt\",\"log.level\":\"info\",\"query.lookback-delta\":\"5m\",\"query.max-concurrency\":\"20\",\"query.max-samples\":\"50000000\",\"query.timeout\":\"2m\",\"rules.alert.for-grace-period\":\"10m\",\"rules.alert.for-outage-tolerance\":\"1h\",\"rules.alert.resend-delay\":\"1m\",\"scrape.adjust-timestamps\":\"true\",\"storage.exemplars.exemplars-limit\":\"0\",\"storage.remote.flush-deadline\":\"1m\",\"storage.remote.read-concurrent-limit\":\"10\",\"storage.remote.read-max-bytes-in-frame\":\"1048576\",\"storage.remote.read-sample-limit\":\"50000000\",\"storage.tsdb.allow-overlapping-blocks\":\"false\",\"storage.tsdb.max-block-chunk-segment-size\":\"0B\",\"storage.tsdb.max-block-duration\":\"2h\",\"storage.tsdb.min-block-duration\":\"2h\",\"storage.tsdb.no-lockfile\":\"false\",\"storage.tsdb.path\":\"/shared/data/prometheus-2\",\"storage.tsdb.retention\":\"0s\",\"storage.tsdb.retention.size\":\"0B\",\"storage.tsdb.retention.time\":\"0s\",\"storage.tsdb.wal-compression\":\"true\",\"storage.tsdb.wal-segment-size\":\"0B\",\"web.config.file\":\"\",\"web.console.libraries\":\"console_libraries\",\"web.console.templates\":\"consoles\",\"web.cors.origin\":\".*\",\"web.enable-admin-api\":\"false\",\"web.enable-lifecycle\":\"false\",\"web.external-url\":\"\",\"web.listen-address\":\":9090\",\"web.max-connections\":\"512\",\"web.page-title\":\"Prometheus Time Series Collection and Processing Server\",\"web.read-timeout\":\"5m\",\"web.route-prefix\":\"/\",\"web.user-assets\":\"\"}}"
+	)
+	out, errout, err := p1.Exec(wgetFlagsCmd("localhost:9090"))
+	testutil.Ok(t, err, errout)
+	testutil.Equals(t, expectedFlagsOutputProm1, out)
+
+	resp, err := http.Get("http://" + p1.Endpoint("http") + "/api/v1/status/flags")
+	testutil.Ok(t, err)
+	defer resp.Body.Close()
+
+	b, err := ioutil.ReadAll(resp.Body)
+	testutil.Ok(t, err)
+	testutil.Equals(t, expectedFlagsOutputProm1, string(b))
+	testutil.Equals(t, "", p1.Endpoint("not-existing"))
+
+	// Now try the same but cross containers.
+	out, errout, err = p1.Exec(wgetFlagsCmd(p2.NetworkEndpoint("http")))
+	testutil.Ok(t, err, errout)
+	testutil.Equals(t, expectedFlagsOutputProm2, out)
+
+	testutil.NotOk(t, p1.Start()) // Starting ok, should fail.
+
+	e.Close()
+	_, err = e2edb.NewPrometheus(e, "prometheus-3") // Should fail.
+	testutil.NotOk(t, err)
 }

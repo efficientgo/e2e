@@ -4,20 +4,10 @@
 package e2e
 
 import (
-	"bufio"
 	"context"
-	"fmt"
-	"os"
 	"os/exec"
 	"time"
 )
-
-func WaitForUserInterrupt() error {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Enter any character to finish: ")
-	_, err := reader.ReadString('\n')
-	return err
-}
 
 func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
 	return exec.Command(name, args...).CombinedOutput()

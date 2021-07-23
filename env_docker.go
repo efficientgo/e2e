@@ -34,20 +34,22 @@ type DockerEnvironment struct {
 
 	registered map[string]struct{}
 	started    []Runnable
+
+	closed bool
 }
 
 // NewDockerEnvironment creates new, isolated docker environment.
-func NewDockerEnvironment(opts ...EnvironmentOption) (*DockerEnvironment, error) {
+func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnvironment, error) {
 	e := environmentOptions{}
 	for _, o := range opts {
 		o(&e)
 	}
-	if e.envName == "" {
+	if name == "" {
 		b := make([]byte, 16)
 		if _, err := rand.Read(b); err != nil {
 			return nil, err
 		}
-		e.envName = fmt.Sprintf("%X-%X-%X-%X-%X", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+		name = fmt.Sprintf("%X-%X-%X-%X-%X", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 	}
 	if e.logger == nil {
 		e.logger = NewLogger(os.Stdout)
@@ -55,13 +57,13 @@ func NewDockerEnvironment(opts ...EnvironmentOption) (*DockerEnvironment, error)
 
 	d := &DockerEnvironment{
 		logger:      e.logger,
-		networkName: e.envName,
+		networkName: name,
 		registered:  map[string]struct{}{},
 	}
 
 	// Force a shutdown in order to cleanup from a spurious situation in case
 	// the previous tests run didn't cleanup correctly.
-	d.Close()
+	d.close()
 
 	dir, err := getTmpDirectory()
 	if err != nil {
@@ -70,10 +72,10 @@ func NewDockerEnvironment(opts ...EnvironmentOption) (*DockerEnvironment, error)
 	d.dir = dir
 
 	// Setup the docker network.
-	if out, err := RunCommandAndGetOutput("docker", "network", "create", e.envName); err != nil {
+	if out, err := RunCommandAndGetOutput("docker", "network", "create", name); err != nil {
 		e.logger.Log(string(out))
 		d.Close()
-		return nil, errors.Wrapf(err, "create docker network '%s'", e.envName)
+		return nil, errors.Wrapf(err, "create docker network '%s'", name)
 	}
 	return d, nil
 }
@@ -83,6 +85,10 @@ func (e *DockerEnvironment) Runnable(name string, ports map[string]int, opts Sta
 }
 
 func (e *DockerEnvironment) FutureRunnable(name string, ports map[string]int) FutureRunnable {
+	if e.closed {
+		return ErrRunnable{name: name, err: errors.New("environment close was invoked already.")}
+	}
+
 	if e.isRegistered(name) {
 		return ErrRunnable{name: name, err: errors.Errorf("there is already one runnable created with the same name %v", name)}
 	}
@@ -110,17 +116,18 @@ func NewErrRunnable(name string, err error) ErrRunnable {
 	}
 }
 
-func (r ErrRunnable) Name() string                          { return r.name }
-func (ErrRunnable) HostDir() string                         { return "" }
-func (ErrRunnable) LocalDir() string                        { return "" }
-func (r ErrRunnable) Start() error                          { return r.err }
-func (r ErrRunnable) WaitReady() error                      { return r.err }
-func (r ErrRunnable) Kill() error                           { return r.err }
-func (r ErrRunnable) Stop() error                           { return r.err }
-func (r ErrRunnable) Exec(*Command) (string, string, error) { return "", "", r.err }
-func (ErrRunnable) Endpoint(string) string                  { return "" }
-func (ErrRunnable) NetworkEndpoint(string) string           { return "" }
-func (r ErrRunnable) Init(StartOptions) Runnable            { return r }
+func (r ErrRunnable) Name() string                         { return r.name }
+func (ErrRunnable) HostDir() string                        { return "" }
+func (ErrRunnable) LocalDir() string                       { return "" }
+func (r ErrRunnable) Start() error                         { return r.err }
+func (r ErrRunnable) WaitReady() error                     { return r.err }
+func (r ErrRunnable) Kill() error                          { return r.err }
+func (r ErrRunnable) Stop() error                          { return r.err }
+func (r ErrRunnable) Exec(Command) (string, string, error) { return "", "", r.err }
+func (ErrRunnable) Endpoint(string) string                 { return "" }
+func (ErrRunnable) NetworkEndpoint(string) string          { return "" }
+func (ErrRunnable) IsRunning() bool                        { return false }
+func (r ErrRunnable) Init(StartOptions) Runnable           { return r }
 
 func (e *DockerEnvironment) isRegistered(name string) bool {
 	_, ok := e.registered[name]
@@ -168,13 +175,15 @@ func (e *DockerEnvironment) buildDockerRunArgs(name string, ports map[string]int
 	}
 
 	// Disable entrypoint if required.
-	if opts.Command != nil && opts.Command.EntrypointDisabled {
+	if opts.Command.EntrypointDisabled {
 		args = append(args, "--entrypoint", "")
 	}
 
 	args = append(args, opts.Image)
-	if opts.Command != nil {
+	if opts.Command.Cmd != "" {
 		args = append(args, opts.Command.Cmd)
+	}
+	if len(opts.Command.Args) > 0 {
 		args = append(args, opts.Command.Args...)
 	}
 	return args
@@ -223,12 +232,16 @@ func (d *dockerRunnable) Init(opts StartOptions) Runnable {
 	return d
 }
 
-func (d *dockerRunnable) isRunning() bool {
+func (d *dockerRunnable) IsRunning() bool {
 	return d.usedNetworkName != ""
 }
 
 // Start starts runnable.
 func (d *dockerRunnable) Start() (err error) {
+	if d.IsRunning() {
+		return errors.Errorf("%v is running. Stop or kill it first to restart.", d.Name())
+	}
+
 	d.logger.Log("Starting", d.Name())
 
 	// In case of any error, if the container was already created, we
@@ -282,12 +295,12 @@ func (d *dockerRunnable) Start() (err error) {
 		}
 		d.hostPorts[portName] = localPort
 	}
-	d.logger.Log("Ports for container:", d.containerName(), "Port names to host ports:", d.hostPorts)
+	d.logger.Log("Ports for container", d.containerName(), ">> Local ports:", d.ports, "Ports available from host:", d.hostPorts)
 	return nil
 }
 
 func (d *dockerRunnable) Stop() error {
-	if !d.isRunning() {
+	if !d.IsRunning() {
 		return nil
 	}
 
@@ -302,7 +315,7 @@ func (d *dockerRunnable) Stop() error {
 }
 
 func (d *dockerRunnable) Kill() error {
-	if !d.isRunning() {
+	if !d.IsRunning() {
 		return nil
 	}
 
@@ -327,7 +340,7 @@ func (d *dockerRunnable) Kill() error {
 //
 // If your service is not running, this method returns incorrect `stopped` endpoint.
 func (d *dockerRunnable) Endpoint(portName string) string {
-	if !d.isRunning() {
+	if !d.IsRunning() {
 		return "stopped"
 	}
 
@@ -352,7 +365,7 @@ func (d *dockerRunnable) NetworkEndpoint(portName string) string {
 		return ""
 	}
 
-	return dockerNetworkContainerHostPort(d.usedNetworkName, d.Name(), port)
+	return dockerNetworkContainerHostPort(d.env.networkName, d.Name(), port)
 }
 
 // dockerNetworkContainerHost return the host address of a container within the network.
@@ -366,7 +379,7 @@ func dockerNetworkContainerHostPort(networkName, containerName string, port int)
 }
 
 func (d *dockerRunnable) Ready() error {
-	if !d.isRunning() {
+	if !d.IsRunning() {
 		return errors.Errorf("service %s is stopped", d.Name())
 	}
 
@@ -383,7 +396,7 @@ func (d *dockerRunnable) containerName() string {
 }
 
 func (d *dockerRunnable) waitForRunning() (err error) {
-	if !d.isRunning() {
+	if !d.IsRunning() {
 		return errors.Errorf("service %s is stopped", d.Name())
 	}
 
@@ -427,7 +440,7 @@ func (d *dockerRunnable) waitForRunning() (err error) {
 }
 
 func (d *dockerRunnable) WaitReady() (err error) {
-	if !d.isRunning() {
+	if !d.IsRunning() {
 		return errors.Errorf("service %s is stopped", d.Name())
 	}
 
@@ -446,8 +459,8 @@ func (d *dockerRunnable) WaitReady() (err error) {
 // Exec runs the provided command against a the docker container specified by this
 // service. It returns the stdout, stderr, and error response from attempting
 // to run the command.
-func (d *dockerRunnable) Exec(command *Command) (string, string, error) {
-	if !d.isRunning() {
+func (d *dockerRunnable) Exec(command Command) (string, string, error) {
+	if !d.IsRunning() {
 		return "", "", errors.Errorf("service %s is stopped", d.Name())
 	}
 
@@ -509,7 +522,11 @@ func getTmpDirectory() (string, error) {
 }
 
 func (e *DockerEnvironment) Close() {
-	if e == nil {
+	e.close()
+	e.closed = true
+}
+func (e *DockerEnvironment) close() {
+	if e == nil || e.closed {
 		return
 	}
 

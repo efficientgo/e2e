@@ -90,7 +90,7 @@ func (r *InstrumentedRunnable) Metrics() (_ string, err error) {
 }
 
 // WaitSumMetrics waits for at least one instance of each given metric names to be present and their sums,
-// returning true when passed to given isExpected(...).
+// returning true when passed to given expected(...).
 func (r *InstrumentedRunnable) WaitSumMetrics(expected MetricValueExpectation, metricNames ...string) error {
 	return r.WaitSumMetricsWithOptions(expected, metricNames)
 }

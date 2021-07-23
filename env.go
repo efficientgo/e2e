@@ -16,16 +16,7 @@ import (
 type EnvironmentOption func(*environmentOptions)
 
 type environmentOptions struct {
-	envName string
-	logger  Logger
-}
-
-// WithEnvironmentName tells scenario to use custom environment name instead of UUID.
-// Prefer reusing names so no hanging environments are registered.
-func WithEnvironmentName(envName string) EnvironmentOption {
-	return func(o *environmentOptions) {
-		o.envName = envName
-	}
+	logger Logger
 }
 
 // WithLogger tells scenario to use custom logger to default one (stdout).
@@ -50,7 +41,7 @@ type StartOptions struct {
 	Image     string
 	EnvVars   map[string]string
 	User      string
-	Command   *Command
+	Command   Command
 	Readiness ReadinessProbe
 	// WaitReadyBackoff represents backoff used for WaitReady.
 	WaitReadyBackoff *backoff.Config
@@ -85,6 +76,9 @@ type FutureRunnable interface {
 type Runnable interface {
 	Linkable
 
+	// IsRunning returns if runnable was started.
+	IsRunning() bool
+
 	// Start tells Runnable to start.
 	Start() error
 
@@ -102,7 +96,7 @@ type Runnable interface {
 
 	// Exec runs the provided command inside the same process context (e.g in the docker container).
 	// It returns the stdout, stderr, and error response from attempting to run the command.
-	Exec(command *Command) (string, string, error)
+	Exec(command Command) (string, string, error)
 
 	// Endpoint returns external (from host perspective) service endpoint (host:port) for given port name.
 	// External means that it will be accessible only from host, but not from docker containers.
@@ -131,15 +125,15 @@ type Command struct {
 	EntrypointDisabled bool
 }
 
-func NewCommand(cmd string, args ...string) *Command {
-	return &Command{
+func NewCommand(cmd string, args ...string) Command {
+	return Command{
 		Cmd:  cmd,
 		Args: args,
 	}
 }
 
-func NewCommandWithoutEntrypoint(cmd string, args ...string) *Command {
-	return &Command{
+func NewCommandWithoutEntrypoint(cmd string, args ...string) Command {
+	return Command{
 		Cmd:                cmd,
 		Args:               args,
 		EntrypointDisabled: true,
@@ -226,10 +220,10 @@ func (p *TCPReadinessProbe) Ready(runnable Runnable) (err error) {
 
 // CmdReadinessProbe checks readiness by `Exec`ing a command (within container) which returns 0 to consider status being ready.
 type CmdReadinessProbe struct {
-	cmd *Command
+	cmd Command
 }
 
-func NewCmdReadinessProbe(cmd *Command) *CmdReadinessProbe {
+func NewCmdReadinessProbe(cmd Command) *CmdReadinessProbe {
 	return &CmdReadinessProbe{cmd: cmd}
 }
 
