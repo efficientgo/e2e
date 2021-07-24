@@ -1,3 +1,6 @@
+// Copyright (c) The EfficientGo Authors.
+// Licensed under the Apache License 2.0.
+
 package e2e
 
 import (
@@ -21,7 +24,7 @@ import (
 const dockerLocalSharedDir = "/shared"
 
 var (
-	dockerPortPattern = regexp.MustCompile(`^.*:(\d+)$`)
+	dockerPortPattern = regexp.MustCompile(`^.*:(\d+)`)
 
 	_ Environment = &DockerEnvironment{}
 )
@@ -35,7 +38,8 @@ type DockerEnvironment struct {
 	registered map[string]struct{}
 	started    []Runnable
 
-	closed bool
+	verbose bool
+	closed  bool
 }
 
 // NewDockerEnvironment creates new, isolated docker environment.
@@ -58,6 +62,7 @@ func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnviro
 	d := &DockerEnvironment{
 		logger:      e.logger,
 		networkName: name,
+		verbose:     e.verbose,
 		registered:  map[string]struct{}{},
 	}
 
@@ -72,7 +77,7 @@ func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnviro
 	d.dir = dir
 
 	// Setup the docker network.
-	if out, err := RunCommandAndGetOutput("docker", "network", "create", name); err != nil {
+	if out, err := d.exec("docker", "network", "create", name).CombinedOutput(); err != nil {
 		e.logger.Log(string(out))
 		d.Close()
 		return nil, errors.Wrapf(err, "create docker network '%s'", name)
@@ -117,15 +122,15 @@ func NewErrRunnable(name string, err error) ErrRunnable {
 }
 
 func (r ErrRunnable) Name() string                         { return r.name }
-func (ErrRunnable) HostDir() string                        { return "" }
-func (ErrRunnable) LocalDir() string                       { return "" }
+func (ErrRunnable) Dir() string                            { return "" }
+func (ErrRunnable) InternalDir() string                    { return "" }
 func (r ErrRunnable) Start() error                         { return r.err }
 func (r ErrRunnable) WaitReady() error                     { return r.err }
 func (r ErrRunnable) Kill() error                          { return r.err }
 func (r ErrRunnable) Stop() error                          { return r.err }
 func (r ErrRunnable) Exec(Command) (string, string, error) { return "", "", r.err }
 func (ErrRunnable) Endpoint(string) string                 { return "" }
-func (ErrRunnable) NetworkEndpoint(string) string          { return "" }
+func (ErrRunnable) InternalEndpoint(string) string         { return "" }
 func (ErrRunnable) IsRunning() bool                        { return false }
 func (r ErrRunnable) Init(StartOptions) Runnable           { return r }
 
@@ -210,11 +215,11 @@ func (d *dockerRunnable) Name() string {
 	return d.name
 }
 
-func (d *dockerRunnable) HostDir() string {
+func (d *dockerRunnable) Dir() string {
 	return filepath.Join(d.env.dir, "data", d.Name())
 }
 
-func (d *dockerRunnable) LocalDir() string {
+func (d *dockerRunnable) InternalDir() string {
 	return filepath.Join(dockerLocalSharedDir, "data", d.Name())
 }
 
@@ -249,11 +254,11 @@ func (d *dockerRunnable) Start() (err error) {
 	// because we don't know if the container was created or not.
 	defer func() {
 		if err != nil {
-			_, _ = RunCommandAndGetOutput("docker", "rm", "--force", d.Name())
+			_, _ = d.env.exec("docker", "rm", "--force", d.Name()).CombinedOutput()
 		}
 	}()
 
-	cmd := exec.Command("docker", d.env.buildDockerRunArgs(d.name, d.ports, d.opts)...)
+	cmd := d.env.exec("docker", d.env.buildDockerRunArgs(d.name, d.ports, d.opts)...)
 	l := &LinePrefixLogger{prefix: d.Name() + ": ", logger: d.logger}
 	cmd.Stdout = l
 	cmd.Stderr = l
@@ -272,9 +277,7 @@ func (d *dockerRunnable) Start() (err error) {
 	// Get the dynamic local ports mapped to the container.
 	for portName, containerPort := range d.ports {
 		var out []byte
-		var localPort int
-
-		out, err = RunCommandAndGetOutput("docker", "port", d.containerName(), strconv.Itoa(containerPort))
+		out, err = d.env.exec("docker", "port", d.containerName(), strconv.Itoa(containerPort)).CombinedOutput()
 		if err != nil {
 			// Catch init errors.
 			if werr := d.waitForRunning(); werr != nil {
@@ -283,20 +286,22 @@ func (d *dockerRunnable) Start() (err error) {
 			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s; output: %q", containerPort, d.Name(), out)
 		}
 
-		stdout := strings.TrimSpace(string(out))
-		matches := dockerPortPattern.FindStringSubmatch(stdout)
-		if len(matches) != 2 {
-			return errors.Errorf("unable to get mapping for port %d (output: %s); service: %s", containerPort, stdout, d.Name())
-		}
-
-		localPort, err = strconv.Atoi(matches[1])
+		d.hostPorts[portName], err = getDockerPortMapping(out)
 		if err != nil {
 			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s", containerPort, d.Name())
 		}
-		d.hostPorts[portName] = localPort
 	}
 	d.logger.Log("Ports for container", d.containerName(), ">> Local ports:", d.ports, "Ports available from host:", d.hostPorts)
 	return nil
+}
+
+func getDockerPortMapping(out []byte) (int, error) {
+	trimmed := strings.TrimSpace(string(out))
+	matches := dockerPortPattern.FindStringSubmatch(trimmed)
+	if len(matches) != 2 {
+		return 0, errors.Errorf("got unexpected output: %s", trimmed)
+	}
+	return strconv.Atoi(matches[1])
 }
 
 func (d *dockerRunnable) Stop() error {
@@ -305,7 +310,7 @@ func (d *dockerRunnable) Stop() error {
 	}
 
 	d.logger.Log("Stopping", d.Name())
-	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", d.containerName()); err != nil {
+	if out, err := d.env.exec("docker", "stop", "--time=30", d.containerName()).CombinedOutput(); err != nil {
 		d.logger.Log(string(out))
 		return err
 	}
@@ -321,14 +326,14 @@ func (d *dockerRunnable) Kill() error {
 
 	d.logger.Log("Killing", d.Name())
 
-	if out, err := RunCommandAndGetOutput("docker", "kill", d.containerName()); err != nil {
+	if out, err := d.env.exec("docker", "kill", d.containerName()).CombinedOutput(); err != nil {
 		d.logger.Log(string(out))
 		return err
 	}
 
 	// Wait until the container actually stopped. However, this could fail if
 	// the container already exited, so we just ignore the error.
-	_, _ = RunCommandAndGetOutput("docker", "wait", d.containerName())
+	_, _ = d.env.exec("docker", "wait", d.containerName()).CombinedOutput()
 
 	d.usedNetworkName = ""
 	d.env.registerStopped(d.Name())
@@ -354,11 +359,11 @@ func (d *dockerRunnable) Endpoint(portName string) string {
 	return fmt.Sprintf("127.0.0.1:%d", localPort)
 }
 
-// NetworkEndpoint returns internal service endpoint (host:port) for given internal port.
+// InternalEndpoint returns internal service endpoint (host:port) for given internal port.
 // Internal means that it will be accessible only from docker containers within the network that this
 // service is running in. If you configure your local resolver with docker DNS namespace you can access it from host
 // as well. Use `Endpoint` for host access.
-func (d *dockerRunnable) NetworkEndpoint(portName string) string {
+func (d *dockerRunnable) InternalEndpoint(portName string) string {
 	// Map the port name to the container port.
 	port, ok := d.ports[portName]
 	if !ok {
@@ -405,13 +410,15 @@ func (d *dockerRunnable) waitForRunning() (err error) {
 		// Enforce a timeout on the command execution because we've seen some flaky tests
 		// stuck here.
 
-		out, err = RunCommandWithTimeoutAndGetOutput(
-			5*time.Second,
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		out, err = d.env.execContext(
+			ctx,
 			"docker",
 			"inspect",
 			"--format={{json .State.Running}}",
 			d.containerName(),
-		)
+		).CombinedOutput()
 		if err != nil {
 			d.waitBackoff.Wait()
 			continue
@@ -479,11 +486,11 @@ func (d *dockerRunnable) Exec(command Command) (string, string, error) {
 	return stdout.String(), stderr.String(), err
 }
 
-func existDockerNetwork(logger Logger, networkName string) (bool, error) {
-	out, err := RunCommandAndGetOutput("docker", "network", "ls", "--quiet", "--filter", fmt.Sprintf("name=%s", networkName))
+func (e *DockerEnvironment) existDockerNetwork() (bool, error) {
+	out, err := e.exec("docker", "network", "ls", "--quiet", "--filter", fmt.Sprintf("name=%s", e.networkName)).CombinedOutput()
 	if err != nil {
-		logger.Log(string(out))
-		logger.Log("Unable to check if docker network", networkName, "exists:", err.Error())
+		e.logger.Log(string(out))
+		e.logger.Log("Unable to check if docker network", e.networkName, "exists:", err.Error())
 		return false, err
 	}
 
@@ -508,7 +515,7 @@ func getTmpDirectory() (string, error) {
 		}
 	}
 
-	tmpDir, err := ioutil.TempDir(dir, "e2e")
+	tmpDir, err := ioutil.TempDir(dir, "e2e_")
 	if err != nil {
 		return "", err
 	}
@@ -525,15 +532,23 @@ func (e *DockerEnvironment) Close() {
 	e.close()
 	e.closed = true
 }
+
+func (e *DockerEnvironment) exec(cmd string, args ...string) *exec.Cmd {
+	return e.execContext(context.Background(), cmd, args...)
+
+}
+
+func (e *DockerEnvironment) execContext(ctx context.Context, cmd string, args ...string) *exec.Cmd {
+	c := NewCommand(cmd, args...)
+	if e.verbose {
+		e.logger.Log("dockerEnv:", c.toString())
+	}
+	return c.exec(ctx)
+}
+
 func (e *DockerEnvironment) close() {
 	if e == nil || e.closed {
 		return
-	}
-
-	if e.dir != "" {
-		if err := os.RemoveAll(e.dir); err != nil {
-			e.logger.Log("Error while removing sharedDir", e.dir, "err:", err)
-		}
 	}
 
 	// Kill the services in the opposite order.
@@ -544,21 +559,21 @@ func (e *DockerEnvironment) close() {
 	}
 
 	// Ensure there are no leftover containers.
-	if out, err := RunCommandAndGetOutput(
+	if out, err := e.exec(
 		"docker",
 		"ps",
 		"-a",
 		"--quiet",
 		"--filter",
 		fmt.Sprintf("network=%s", e.networkName),
-	); err == nil {
+	).CombinedOutput(); err == nil {
 		for _, containerID := range strings.Split(string(out), "\n") {
 			containerID = strings.TrimSpace(containerID)
 			if containerID == "" {
 				continue
 			}
 
-			if out, err = RunCommandAndGetOutput("docker", "rm", "--force", containerID); err != nil {
+			if out, err = e.exec("docker", "rm", "--force", containerID).CombinedOutput(); err != nil {
 				e.logger.Log(string(out))
 				e.logger.Log("Unable to cleanup leftover container", containerID, ":", err.Error())
 			}
@@ -571,10 +586,19 @@ func (e *DockerEnvironment) close() {
 	// Teardown the docker network. In case the network does not exists (ie. this function
 	// is called during the setup of the scenario) we skip the removal in order to not log
 	// an error which may be misleading.
-	if ok, err := existDockerNetwork(e.logger, e.networkName); ok || err != nil {
-		if out, err := RunCommandAndGetOutput("docker", "network", "rm", e.networkName); err != nil {
+	if ok, err := e.existDockerNetwork(); ok || err != nil {
+		if out, err := e.exec("docker", "network", "rm", e.networkName).CombinedOutput(); err != nil {
 			e.logger.Log(string(out))
 			e.logger.Log("Unable to remove docker network", e.networkName, ":", err.Error())
+		}
+	}
+
+	if e.dir != "" {
+		if err := e.exec("chmod", "-R", "777", e.dir).Run(); err != nil {
+			e.logger.Log("Error while chmod sharedDir", e.dir, "err:", err)
+		}
+		if err := os.RemoveAll(e.dir); err != nil {
+			e.logger.Log("Error while removing sharedDir", e.dir, "err:", err)
 		}
 	}
 }

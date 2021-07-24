@@ -3,23 +3,6 @@
 
 package e2e
 
-import (
-	"context"
-	"os/exec"
-	"time"
-)
-
-func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
-	return exec.Command(name, args...).CombinedOutput()
-}
-
-func RunCommandWithTimeoutAndGetOutput(timeout time.Duration, name string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	return exec.CommandContext(ctx, name, args...).CombinedOutput()
-}
-
 func EmptyFlags() map[string]string {
 	return map[string]string{}
 }

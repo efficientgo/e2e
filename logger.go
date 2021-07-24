@@ -1,3 +1,6 @@
+// Copyright (c) The EfficientGo Authors.
+// Licensed under the Apache License 2.0.
+
 package e2e
 
 import (
@@ -17,19 +20,19 @@ type Logger interface {
 	Log(keyvals ...interface{}) error
 }
 
-var _ Logger = &logger{}
+var _ Logger = &SimpleLogger{}
 
-type logger struct {
+type SimpleLogger struct {
 	w io.Writer
 }
 
-func NewLogger(w io.Writer) *logger {
-	return &logger{
+func NewLogger(w io.Writer) *SimpleLogger {
+	return &SimpleLogger{
 		w: w,
 	}
 }
 
-func (l *logger) Log(keyvals ...interface{}) error {
+func (l *SimpleLogger) Log(keyvals ...interface{}) error {
 	b := strings.Builder{}
 	b.WriteString(time.Now().Format("15:04:05"))
 
@@ -42,7 +45,6 @@ func (l *logger) Log(keyvals ...interface{}) error {
 	_, err := l.w.Write([]byte(b.String()))
 	return err
 }
-
 
 type LinePrefixLogger struct {
 	prefix string

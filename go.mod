@@ -1,6 +1,6 @@
 module github.com/efficientgo/e2e
 
-go 1.16
+go 1.15
 
 require (
 	github.com/efficientgo/tools/core v0.0.0-20210129205121-421d0828c9a6

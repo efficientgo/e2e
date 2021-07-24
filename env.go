@@ -1,9 +1,15 @@
+// Copyright (c) The EfficientGo Authors.
+// Licensed under the Apache License 2.0.
+
 package e2e
 
 import (
+	"context"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -16,13 +22,21 @@ import (
 type EnvironmentOption func(*environmentOptions)
 
 type environmentOptions struct {
-	logger Logger
+	logger  Logger
+	verbose bool
 }
 
-// WithLogger tells scenario to use custom logger to default one (stdout).
+// WithLogger tells environment to use custom logger to default one (stdout).
 func WithLogger(logger Logger) EnvironmentOption {
 	return func(o *environmentOptions) {
 		o.logger = logger
+	}
+}
+
+// WithVerbose tells environment to be verbose i.e print all commands it executes.
+func WithVerbose() EnvironmentOption {
+	return func(o *environmentOptions) {
+		o.verbose = true
 	}
 }
 
@@ -52,17 +66,15 @@ type Linkable interface {
 	// Name returns unique name for the Runnable instance.
 	Name() string
 
-	// HostDir returns host working directory path for this runnable.
-	HostDir() string
+	// Dir returns host working directory path for this runnable.
+	Dir() string
 
-	// LocalDir returns local working directory path for this runnable.
-	LocalDir() string
+	// InternalDir returns local, environment working directory path for this runnable.
+	InternalDir() string
 
-	// NetworkEndpoint returns internal service endpoint (host:port) for given internal port.
-	// Internal means that it will be accessible only from docker containers within the network that this
-	// service is running in. If you configure your local resolver with docker DNS namespace you can access it from host
-	// as well. Use `Endpoint` for host access.
-	NetworkEndpoint(portName string) string
+	// InternalEndpoint returns internal runnable endpoint (host:port) for given internal port.
+	// Internal means that it will be accessible only from runnable context.
+	InternalEndpoint(portName string) string
 }
 
 type FutureRunnable interface {
@@ -98,7 +110,7 @@ type Runnable interface {
 	// It returns the stdout, stderr, and error response from attempting to run the command.
 	Exec(command Command) (string, string, error)
 
-	// Endpoint returns external (from host perspective) service endpoint (host:port) for given port name.
+	// Endpoint returns external runnable endpoint (host:port) for given port name.
 	// External means that it will be accessible only from host, but not from docker containers.
 	//
 	// If your service is not running, this method returns incorrect `stopped` endpoint.
@@ -130,6 +142,18 @@ func NewCommand(cmd string, args ...string) Command {
 		Cmd:  cmd,
 		Args: args,
 	}
+}
+
+func (c Command) toString() string {
+	var a []string
+	if c.Cmd != "" {
+		a = append(a, c.Cmd)
+	}
+	return fmt.Sprint(append(a, c.Args...))
+}
+
+func (c Command) exec(ctx context.Context) *exec.Cmd {
+	return exec.CommandContext(ctx, c.Cmd, c.Args...)
 }
 
 func NewCommandWithoutEntrypoint(cmd string, args ...string) Command {

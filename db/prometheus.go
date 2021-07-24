@@ -1,3 +1,6 @@
+// Copyright (c) The EfficientGo Authors.
+// Licensed under the Apache License 2.0.
+
 package e2edb
 
 import (
@@ -24,7 +27,7 @@ func NewPrometheus(env e2e.Environment, name string, opts ...Option) (*Prometheu
 	ports := map[string]int{"http": 9090}
 
 	f := e2e.NewFutureInstrumentedRunnable(env, name, ports, "http")
-	if err := os.MkdirAll(f.HostDir(), 0750); err != nil {
+	if err := os.MkdirAll(f.Dir(), 0750); err != nil {
 		return nil, errors.Wrap(err, "create prometheus dir")
 	}
 
@@ -43,14 +46,14 @@ scrape_configs:
   - source_labels: ['__address__']
     regex: '^.+:80$'
     action: drop
-`, name, f.NetworkEndpoint("http"))
-	if err := ioutil.WriteFile(filepath.Join(f.HostDir(), "prometheus.yml"), []byte(config), 0600); err != nil {
+`, name, f.InternalEndpoint("http"))
+	if err := ioutil.WriteFile(filepath.Join(f.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
 		return nil, errors.Wrap(err, "creating prom config failed")
 	}
 
 	args := e2e.BuildArgs(map[string]string{
-		"--config.file":                     filepath.Join(f.LocalDir(), "prometheus.yml"),
-		"--storage.tsdb.path":               f.LocalDir(),
+		"--config.file":                     filepath.Join(f.InternalDir(), "prometheus.yml"),
+		"--storage.tsdb.path":               f.InternalDir(),
 		"--storage.tsdb.max-block-duration": "2h",
 		"--log.level":                       "info",
 		"--web.listen-address":              fmt.Sprintf(":%d", ports["http"]),
@@ -65,7 +68,7 @@ scrape_configs:
 }
 
 func (p *Prometheus) SetConfig(config string) error {
-	if err := ioutil.WriteFile(filepath.Join(p.HostDir(), "prometheus.yml"), []byte(config), 0600); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(p.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
 		return errors.Wrap(err, "creating prom config failed")
 	}
 
