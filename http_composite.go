@@ -5,24 +5,23 @@ package e2e
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/efficientgo/tools/core/pkg/backoff"
 	"github.com/pkg/errors"
 )
 
-// CompositeHTTPService abstract an higher-level service composed by more than one HTTPService.
-type CompositeHTTPService struct {
-	services []*HTTPService
+// CompositeInstrumentedRunnable abstract an higher-level service composed by more than one InstrumentedRunnable.
+type CompositeInstrumentedRunnable struct {
+	runnables []*InstrumentedRunnable
 
 	// Generic retry backoff.
 	backoff *backoff.Backoff
 }
 
-func NewCompositeHTTPService(services ...*HTTPService) *CompositeHTTPService {
-	return &CompositeHTTPService{
-		services: services,
+func NewCompositeInstrumentedRunnable(runnables ...*InstrumentedRunnable) *CompositeInstrumentedRunnable {
+	return &CompositeInstrumentedRunnable{
+		runnables: runnables,
 		backoff: backoff.New(context.Background(), backoff.Config{
 			Min:        300 * time.Millisecond,
 			Max:        600 * time.Millisecond,
@@ -31,21 +30,17 @@ func NewCompositeHTTPService(services ...*HTTPService) *CompositeHTTPService {
 	}
 }
 
-func (s *CompositeHTTPService) NumInstances() int {
-	return len(s.services)
-}
-
-func (s *CompositeHTTPService) Instances() []*HTTPService {
-	return s.services
+func (s *CompositeInstrumentedRunnable) Instances() []*InstrumentedRunnable {
+	return s.runnables
 }
 
 // WaitSumMetrics waits for at least one instance of each given metric names to be present and their sums, returning true
-// when passed to given isExpected(...).
-func (s *CompositeHTTPService) WaitSumMetrics(isExpected func(sums ...float64) bool, metricNames ...string) error {
-	return s.WaitSumMetricsWithOptions(isExpected, metricNames)
+// when passed to given expected(...).
+func (s *CompositeInstrumentedRunnable) WaitSumMetrics(expected MetricValueExpectation, metricNames ...string) error {
+	return s.WaitSumMetricsWithOptions(expected, metricNames)
 }
 
-func (s *CompositeHTTPService) WaitSumMetricsWithOptions(isExpected func(sums ...float64) bool, metricNames []string, opts ...MetricsOption) error {
+func (s *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExpectation, metricNames []string, opts ...MetricsOption) error {
 	var (
 		sums    []float64
 		err     error
@@ -61,28 +56,28 @@ func (s *CompositeHTTPService) WaitSumMetricsWithOptions(isExpected func(sums ..
 			return err
 		}
 
-		if isExpected(sums...) {
+		if expected(sums...) {
 			return nil
 		}
 
 		s.backoff.Wait()
 	}
 
-	return fmt.Errorf("unable to find metrics %s with expected values. Last error: %v. Last values: %v", metricNames, err, sums)
+	return errors.Errorf("unable to find metrics %s with expected values. Last error: %v. Last values: %v", metricNames, err, sums)
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
-func (s *CompositeHTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error) {
+func (s *CompositeInstrumentedRunnable) SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error) {
 	sums := make([]float64, len(metricNames))
 
-	for _, service := range s.services {
+	for _, service := range s.runnables {
 		partials, err := service.SumMetrics(metricNames, opts...)
 		if err != nil {
 			return nil, err
 		}
 
 		if len(partials) != len(sums) {
-			return nil, fmt.Errorf("unexpected mismatching sum metrics results (got %d, expected %d)", len(partials), len(sums))
+			return nil, errors.Errorf("unexpected mismatching sum metrics results (got %d, expected %d)", len(partials), len(sums))
 		}
 
 		for i := 0; i < len(sums); i++ {

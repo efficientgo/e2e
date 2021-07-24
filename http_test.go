@@ -4,6 +4,7 @@
 package e2e
 
 import (
+	"context"
 	"math"
 	"net"
 	"net/http"
@@ -70,16 +71,15 @@ metric_b_summary_count 1
 		_ = srv.Serve(ln)
 	}()
 
-	s := &HTTPService{
-		httpPort: 0,
-		ConcreteService: &ConcreteService{
-			networkPortsContainerToLocal: map[int]int{
-				0: port,
-			},
+	s := &InstrumentedRunnable{
+		metricPortName: "http",
+		Runnable: &dockerRunnable{
+			hostPorts:       map[string]int{"http": port},
+			usedNetworkName: "hack",
 		},
 	}
 
-	s.SetBackoff(backoff.Config{
+	s.waitBackoff = backoff.New(context.Background(), backoff.Config{
 		Min:        300 * time.Millisecond,
 		Max:        600 * time.Millisecond,
 		MaxRetries: 50,
@@ -87,7 +87,7 @@ metric_b_summary_count 1
 	testutil.Ok(t, s.WaitSumMetrics(Equals(221), "metric_a"))
 
 	// No retry.
-	s.SetBackoff(backoff.Config{
+	s.waitBackoff = backoff.New(context.Background(), backoff.Config{
 		Min:        0,
 		Max:        0,
 		MaxRetries: 1,
@@ -154,16 +154,15 @@ metric_b 1000
 		_ = srv.Serve(ln)
 	}()
 
-	s := &HTTPService{
-		httpPort: 0,
-		ConcreteService: &ConcreteService{
-			networkPortsContainerToLocal: map[int]int{
-				0: port,
-			},
+	s := &InstrumentedRunnable{
+		metricPortName: "http",
+		Runnable: &dockerRunnable{
+			hostPorts:       map[string]int{"http": port},
+			usedNetworkName: "hack",
 		},
 	}
 
-	s.SetBackoff(backoff.Config{
+	s.waitBackoff = backoff.New(context.Background(), backoff.Config{
 		Min:        300 * time.Millisecond,
 		Max:        600 * time.Millisecond,
 		MaxRetries: 50,

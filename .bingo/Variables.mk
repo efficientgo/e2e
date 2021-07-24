@@ -41,17 +41,17 @@ $(GOIMPORTS): $(BINGO_DIR)/goimports.mod
 	@echo "(re)installing $(GOBIN)/goimports-v0.0.0-20200519204825-e64124511800"
 	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=goimports.mod -o=$(GOBIN)/goimports-v0.0.0-20200519204825-e64124511800 "golang.org/x/tools/cmd/goimports"
 
-GOLANGCI_LINT := $(GOBIN)/golangci-lint-v1.26.0
+GOLANGCI_LINT := $(GOBIN)/golangci-lint-v1.41.1
 $(GOLANGCI_LINT): $(BINGO_DIR)/golangci-lint.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/golangci-lint-v1.26.0"
-	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=golangci-lint.mod -o=$(GOBIN)/golangci-lint-v1.26.0 "github.com/golangci/golangci-lint/cmd/golangci-lint"
+	@echo "(re)installing $(GOBIN)/golangci-lint-v1.41.1"
+	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=golangci-lint.mod -o=$(GOBIN)/golangci-lint-v1.41.1 "github.com/golangci/golangci-lint/cmd/golangci-lint"
 
-MDOX := $(GOBIN)/mdox-v0.1.1-0.20201227133330-19093fdd9326
+MDOX := $(GOBIN)/mdox-v0.2.2-0.20210712170635-f49414cc6b5a
 $(MDOX): $(BINGO_DIR)/mdox.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/mdox-v0.1.1-0.20201227133330-19093fdd9326"
-	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=mdox.mod -o=$(GOBIN)/mdox-v0.1.1-0.20201227133330-19093fdd9326 "github.com/bwplotka/mdox"
+	@echo "(re)installing $(GOBIN)/mdox-v0.2.2-0.20210712170635-f49414cc6b5a"
+	@cd $(BINGO_DIR) && $(GO) build -mod=mod -modfile=mdox.mod -o=$(GOBIN)/mdox-v0.2.2-0.20210712170635-f49414cc6b5a "github.com/bwplotka/mdox"
 
 MISSPELL := $(GOBIN)/misspell-v0.3.4
 $(MISSPELL): $(BINGO_DIR)/misspell.mod

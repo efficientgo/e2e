@@ -3,9 +3,7 @@
 
 package e2e
 
-// This module is a fully featured e2e suite allowing utilizing `go test` for setting hermetic up complex microservice integration testing scenarios using docker.
-// Example usages:
-//  * https://github.com/cortexproject/cortex/tree/master/integration
-//  * https://github.com/thanos-io/thanos/tree/master/test/e2e
+// This module is a fully featured e2e suite allowing hermetic complex microservice scenario for testing, benchmarking
+// or demo purposes using docker.
 //
-// Check github.com/efficientgo/tools/e2e/db for common DBs services you can run out of the box.
+// See examples/prometheus to see example usage.

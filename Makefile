@@ -54,10 +54,17 @@ deps: ## Cleans up deps for all modules
 		cd $${dir} && go mod tidy; \
 	done
 
+define MDOX_VALIDATORS
+validators:
+- regex: '^(http://.*|https://.*)'
+  type: ignore
+endef
+
+export MDOX_VALIDATORS
 .PHONY: docs
 docs: $(MDOX) ## Generates config snippets and doc formatting.
 	@echo ">> generating docs $(PATH)"
-	@$(MDOX) fmt -l *.md
+	@$(MDOX) fmt -l --links.validate.config="$$MDOX_VALIDATORS" *.md
 
 .PHONY: format
 format: ## Formats Go code.
@@ -71,6 +78,11 @@ test: ## Runs all Go unit tests.
 	for dir in $(MODULES) ; do \
 		cd $${dir} && go test -v -race ./...; \
 	done
+
+.PHONY: run-example
+run-example: ## Runs our standalone Thanos example using e2e.
+	@echo ">> running example"
+	cd examples/thanos && go run .
 
 .PHONY: check-git
 check-git:
@@ -89,16 +101,16 @@ lint: ## Runs various static analysis against our code.
 lint: $(FAILLINT) $(GOLANGCI_LINT) $(MISSPELL) $(COPYRIGHT) build format docs check-git deps
 	$(call require_clean_work_tree,"detected not clean master before running lint - run make lint and commit changes.")
 	@echo ">> verifying imported "
-	for dir in $(MODULES) ; do \
-		cd $${dir} && $(FAILLINT) -paths "fmt.{Print,PrintfPrintln,Sprint}" -ignore-tests ./... && \
-		$(FAILLINT) -paths "github.com/stretchr/testify=github.com/efficientgo/tools/core/pkg/testutil" ./...; \
+	@for dir in $(MODULES) ; do \
+		cd $${dir} && $(FAILLINT) -paths "fmt.{Print,PrintfPrintln}" -ignore-tests ./... && \
+		$(FAILLINT) -paths "github.com/stretchr/testify=github.com/efficientgo/tools/core/pkg/testutil,fmt.{Errorf}=github.com/pkg/errors" ./...; \
 	done
 	@echo ">> examining all of the Go files"
-	for dir in $(MODULES) ; do \
+	@for dir in $(MODULES) ; do \
 		cd $${dir} && go vet -stdmethods=false ./...; \
 	done
 	@echo ">> linting all of the Go files GOGC=${GOGC}"
-	for dir in $(MODULES) ; do \
+	@for dir in $(MODULES) ; do \
 		cd $${dir} && $(GOLANGCI_LINT) run; \
 	done
 	@echo ">> detecting misspells"
