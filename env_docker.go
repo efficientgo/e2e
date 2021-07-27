@@ -105,6 +105,10 @@ func (e *DockerEnvironment) FutureRunnable(name string, ports map[string]int) Fu
 		logger:    e.logger,
 		hostPorts: map[string]int{},
 	}
+	if err := os.MkdirAll(d.Dir(), 0750); err != nil {
+		return ErrRunnable{name: name, err: err}
+	}
+
 	e.register(name)
 	return d
 }

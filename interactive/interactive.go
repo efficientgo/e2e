@@ -5,12 +5,11 @@ package e2einteractive
 
 import (
 	"fmt"
-	"os"
+	"net"
+	"net/http"
 	"os/exec"
-	"os/signal"
 	"runtime"
-	"syscall"
-	"testing"
+	"sync"
 
 	"github.com/pkg/errors"
 )
@@ -31,23 +30,32 @@ func OpenInBrowser(url string) error {
 	return err
 }
 
-// RunUntilInterrupt ...
-// TODO(bwplotka): Comment RunUntilInterrupt, make sure it makes sense.
-func RunUntilInterrupt(t testing.TB) error {
-	fmt.Println("Waiting for user interrupt...")
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-c
-	return SignalError{Signal: sig}
-}
+func RunUntilEndpointHit() (err error) {
+	once := sync.Once{}
+	wg := sync.WaitGroup{}
 
-// SignalError is returned by the signal handler's execute function
-// when it terminates due to a received signal.
-type SignalError struct {
-	Signal os.Signal
-}
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		return err
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		once.Do(func() {
+			wg.Done()
+		})
+	})}
 
-// Error implements the error interface.
-func (e SignalError) Error() string {
-	return fmt.Sprintf("received signal %s", e.Signal)
+	wg.Add(1)
+	go func() {
+		if serr := srv.Serve(l); serr != nil {
+			once.Do(func() {
+				err = errors.Wrap(serr, "unexpected error")
+				wg.Done()
+			})
+		}
+	}()
+
+	fmt.Println("Waiting for user HTTP request on ", "http://"+l.Addr().String(), "...")
+	wg.Wait()
+	_ = l.Close()
+	return nil
 }

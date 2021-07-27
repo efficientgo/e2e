@@ -18,7 +18,7 @@ type Prometheus struct {
 	*e2e.InstrumentedRunnable
 }
 
-func NewPrometheus(env e2e.Environment, name string, opts ...Option) (*Prometheus, error) {
+func NewPrometheus(env e2e.Environment, name string, opts ...Option) *Prometheus {
 	o := options{image: "quay.io/prometheus/prometheus:v2.27.0"}
 	for _, opt := range opts {
 		opt(&o)
@@ -27,10 +27,6 @@ func NewPrometheus(env e2e.Environment, name string, opts ...Option) (*Prometheu
 	ports := map[string]int{"http": 9090}
 
 	f := e2e.NewFutureInstrumentedRunnable(env, name, ports, "http")
-	if err := os.MkdirAll(f.Dir(), 0750); err != nil {
-		return nil, errors.Wrap(err, "create prometheus dir")
-	}
-
 	config := fmt.Sprintf(`
 global:
   external_labels:
@@ -48,23 +44,26 @@ scrape_configs:
     action: drop
 `, name, f.InternalEndpoint("http"))
 	if err := ioutil.WriteFile(filepath.Join(f.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
-		return nil, errors.Wrap(err, "creating prom config failed")
+		return &Prometheus{InstrumentedRunnable: e2e.NewErrInstrumentedRunnable(name, errors.Wrap(err, "create prometheus config failed"))}
 	}
 
-	args := e2e.BuildArgs(map[string]string{
+	args := map[string]string{
 		"--config.file":                     filepath.Join(f.InternalDir(), "prometheus.yml"),
 		"--storage.tsdb.path":               f.InternalDir(),
-		"--storage.tsdb.max-block-duration": "2h",
+		"--storage.tsdb.max-block-duration": "2h", // No compaction - mostly not needed for quick test.
 		"--log.level":                       "info",
 		"--web.listen-address":              fmt.Sprintf(":%d", ports["http"]),
-	})
+	}
+	if o.flagOverride != nil {
+		args = e2e.MergeFlagsWithoutRemovingEmpty(args, o.flagOverride)
+	}
 
 	return &Prometheus{InstrumentedRunnable: f.Init(e2e.StartOptions{
 		Image:     o.image,
-		Command:   e2e.NewCommandWithoutEntrypoint("prometheus", args...),
+		Command:   e2e.NewCommandWithoutEntrypoint("prometheus", e2e.BuildArgs(args)...),
 		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
 		User:      strconv.Itoa(os.Getuid()),
-	})}, nil
+	})}
 }
 
 func (p *Prometheus) SetConfig(config string) error {
