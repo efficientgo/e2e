@@ -7,6 +7,9 @@ package e2edb
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/efficientgo/e2e"
@@ -20,7 +23,8 @@ const (
 type Option func(*options)
 
 type options struct {
-	image string
+	image        string
+	flagOverride map[string]string
 }
 
 func WithImage(image string) Option {
@@ -29,42 +33,49 @@ func WithImage(image string) Option {
 	}
 }
 
+func WithFlagOverride(ov map[string]string) Option {
+	return func(o *options) {
+		o.flagOverride = ov
+	}
+}
+
 const AccessPortName = "http"
 
 // NewMinio returns minio server, used as a local replacement for S3.
 func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2e.InstrumentedRunnable {
-	o := options{image: "minio/minio:RELEASE.2019-12-30T05-45-39Z"}
+	o := options{image: "minio/minio:RELEASE.2021-07-27T02-40-15Z"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	minioKESGithubContent := "https://raw.githubusercontent.com/minio/kes/master"
-	commands := []string{
-		"curl -sSL --tlsv1.2 -O '%s/root.key'	-O '%s/root.cert'",
-		"mkdir -p /data/%s && minio server --address :%v --quiet /data",
+	userID := strconv.Itoa(os.Getuid())
+	ports := map[string]int{AccessPortName: 8090}
+	envVars := []string{
+		"MINIO_ROOT_USER=" + MinioAccessKey,
+		"MINIO_ROOT_PASSWORD=" + MinioSecretKey,
+		"MINIO_BROWSER=" + "off",
+		"ENABLE_HTTPS=" + "0",
+		// https://docs.min.io/docs/minio-kms-quickstart-guide.html
+		"MINIO_KMS_KES_ENDPOINT=" + "https://play.min.io:7373",
+		"MINIO_KMS_KES_KEY_FILE=" + "root.key",
+		"MINIO_KMS_KES_CERT_FILE=" + "root.cert",
+		"MINIO_KMS_KES_KEY_NAME=" + "my-minio-key",
 	}
-
-	return e2e.NewInstrumentedRunnable(
-		env,
-		name,
-		map[string]int{AccessPortName: 8090},
-		AccessPortName,
+	f := e2e.NewFutureInstrumentedRunnable(env, name, ports, AccessPortName)
+	return f.Init(
 		e2e.StartOptions{
 			Image: o.image,
 			// Create the required bucket before starting minio.
-			Command:   e2e.NewCommandWithoutEntrypoint("sh", "-c", fmt.Sprintf(strings.Join(commands, " && "), minioKESGithubContent, minioKESGithubContent, bktName, 8090)),
-			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/minio/health/ready", 200, 200),
-			EnvVars: map[string]string{
-				"MINIO_ACCESS_KEY": MinioAccessKey,
-				"MINIO_SECRET_KEY": MinioSecretKey,
-				"MINIO_BROWSER":    "off",
-				"ENABLE_HTTPS":     "0",
-				// https://docs.min.io/docs/minio-kms-quickstart-guide.html
-				"MINIO_KMS_KES_ENDPOINT":  "https://play.min.io:7373",
-				"MINIO_KMS_KES_KEY_FILE":  "root.key",
-				"MINIO_KMS_KES_CERT_FILE": "root.cert",
-				"MINIO_KMS_KES_KEY_NAME":  "my-minio-key",
-			},
+			Command: e2e.NewCommandWithoutEntrypoint("sh", "-c", fmt.Sprintf(
+				// Hacky: Create user that matches ID with host ID to be able to remove .minio.sys details on the start.
+				// Proper solution would be to contribute/create our own minio image which is non root.
+				"useradd -G root -u %v me && mkdir -p %s && chown -R me %s &&"+
+					"curl -sSL --tlsv1.2 -O 'https://raw.githubusercontent.com/minio/kes/master/root.key' -O 'https://raw.githubusercontent.com/minio/kes/master/root.cert' && "+
+					"cp root.* /home/me/ && "+
+					"su - me -s /bin/sh -c 'mkdir -p %s && %s minio server --address :%v --quiet %v'",
+				userID, f.InternalDir(), f.InternalDir(), filepath.Join(f.InternalDir(), bktName), strings.Join(envVars, " "), ports[AccessPortName], f.InternalDir()),
+			),
+			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/minio/health/live", 200, 200),
 		},
 	)
 }
@@ -75,6 +86,7 @@ func NewConsul(env e2e.Environment, name string, opts ...Option) *e2e.Instrument
 		opt(&o)
 	}
 
+	e2e.MergeFlags()
 	return e2e.NewInstrumentedRunnable(
 		env,
 		name,

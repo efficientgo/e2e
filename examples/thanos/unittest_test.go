@@ -26,12 +26,10 @@ func TestExample(t *testing.T) {
 	t.Cleanup(e.Close)
 
 	// Create structs for Prometheus containers scraping itself.
-	p1, err := e2edb.NewPrometheus(e, "prometheus-1")
-	testutil.Ok(t, err)
+	p1 := e2edb.NewPrometheus(e, "prometheus-1")
 	s1 := newThanosSidecar(e, "sidecar-1", p1)
 
-	p2, err := e2edb.NewPrometheus(e, "prometheus-2")
-	testutil.Ok(t, err)
+	p2 := e2edb.NewPrometheus(e, "prometheus-2")
 	s2 := newThanosSidecar(e, "sidecar-2", p2)
 
 	// Create Thanos Query container. We can point the peer network addresses of both Prometheus instance

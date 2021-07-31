@@ -3,6 +3,8 @@
 
 package e2e
 
+import "strings"
+
 func EmptyFlags() map[string]string {
 	return map[string]string{}
 }
@@ -35,9 +37,27 @@ func BuildArgs(flags map[string]string) []string {
 	for name, value := range flags {
 		if value != "" {
 			args = append(args, name+"="+value)
-		} else {
-			args = append(args, name)
+			continue
 		}
+		args = append(args, name)
+	}
+	return args
+}
+
+// BuildKingpinArgs is like BuildArgs but with special handling of slice args.
+// NOTE(bwplotka): flags with values as comma but not indented to be slice will cause issues.
+func BuildKingpinArgs(flags map[string]string) []string {
+	args := make([]string, 0, len(flags))
+
+	for name, value := range flags {
+		if value != "" {
+			s := strings.Split(value, ",")
+			for _, ss := range s {
+				args = append(args, name+"="+ss)
+			}
+			continue
+		}
+		args = append(args, name)
 	}
 	return args
 }

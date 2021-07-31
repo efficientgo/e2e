@@ -73,16 +73,10 @@ func deploy(ctx context.Context) error {
 	defer e.Close()
 
 	// Create structs for Prometheus containers scraping itself.
-	p1, err := e2edb.NewPrometheus(e, "prometheus-1")
-	if err != nil {
-		return err
-	}
+	p1 := e2edb.NewPrometheus(e, "prometheus-1")
 	s1 := newThanosSidecar(e, "sidecar-1", p1)
 
-	p2, err := e2edb.NewPrometheus(e, "prometheus-2")
-	if err != nil {
-		return err
-	}
+	p2 := e2edb.NewPrometheus(e, "prometheus-2")
 	s2 := newThanosSidecar(e, "sidecar-2", p2)
 
 	// Create Thanos Query container. We can point the peer network addresses of both Prometheus instance

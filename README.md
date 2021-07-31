@@ -58,14 +58,12 @@ Let's go through an example leveraging `go test` flow:
 
 3. Program your scenario as you want. You can start, wait for their readiness, stop, check their metrics and use their network endpoints from both unit test (`Endpoint`) as well as within each workload (`InternalEndpoint`). You can also access workload directory. There is a shared directory across all workloads. Check `Dir` and `InternalDir` runnable methods.
 
-   ```go mdox-exec="sed -n '28,87p' examples/thanos/unittest_test.go"
+   ```go mdox-exec="sed -n '28,86p' examples/thanos/unittest_test.go"
    	// Create structs for Prometheus containers scraping itself.
-   	p1, err := e2edb.NewPrometheus(e, "prometheus-1")
-   	testutil.Ok(t, err)
+   	p1 := e2edb.NewPrometheus(e, "prometheus-1")
    	s1 := newThanosSidecar(e, "sidecar-1", p1)
 
-   	p2, err := e2edb.NewPrometheus(e, "prometheus-2")
-   	testutil.Ok(t, err)
+   	p2 := e2edb.NewPrometheus(e, "prometheus-2")
    	s2 := newThanosSidecar(e, "sidecar-2", p2)
 
    	// Create Thanos Query container. We can point the peer network addresses of both Prometheus instance

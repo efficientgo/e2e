@@ -25,9 +25,7 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Ok(t, err)
 	t.Cleanup(e.Close)
 
-	p1, err := e2edb.NewPrometheus(e, "prometheus-1")
-	testutil.Ok(t, err)
-
+	p1 := e2edb.NewPrometheus(e, "prometheus-1")
 	testutil.Equals(t, "prometheus-1", p1.Name())
 	testutil.Equals(t, filepath.Join(e.SharedDir(), "data", p1.Name()), p1.Dir())
 	testutil.Equals(t, filepath.Join("/shared", "data", p1.Name()), p1.InternalDir())
@@ -45,9 +43,7 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Equals(t, "stopped", p1.Endpoint("http"))
 	testutil.Equals(t, "stopped", p1.Endpoint("not-existing"))
 
-	p2, err := e2edb.NewPrometheus(e, "prometheus-2")
-	testutil.Ok(t, err)
-
+	p2 := e2edb.NewPrometheus(e, "prometheus-2")
 	testutil.Ok(t, e2e.StartAndWaitReady(p1, p2))
 	testutil.Ok(t, p1.WaitReady())
 	testutil.Ok(t, p1.WaitReady())
@@ -86,6 +82,6 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.NotOk(t, p1.Start()) // Starting ok, should fail.
 
 	e.Close()
-	_, err = e2edb.NewPrometheus(e, "prometheus-3") // Should fail.
-	testutil.NotOk(t, err)
+	afterClose := e2edb.NewPrometheus(e, "prometheus-3") // Should fail.
+	testutil.NotOk(t, afterClose.Start())
 }

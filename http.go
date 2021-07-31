@@ -58,6 +58,12 @@ func NewInstrumentedRunnable(env Environment, name string, ports map[string]int,
 	return NewFutureInstrumentedRunnable(env, name, ports, metricPortName).Init(opts)
 }
 
+func NewErrInstrumentedRunnable(name string, err error) *InstrumentedRunnable {
+	return &InstrumentedRunnable{
+		Runnable: NewErrRunnable(name, err),
+	}
+}
+
 func (r *FutureInstrumentedRunnable) Init(opts StartOptions) *InstrumentedRunnable {
 	if opts.WaitReadyBackoff == nil {
 		opts.WaitReadyBackoff = &backoff.Config{
@@ -73,6 +79,10 @@ func (r *FutureInstrumentedRunnable) Init(opts StartOptions) *InstrumentedRunnab
 }
 
 func (r *InstrumentedRunnable) Metrics() (_ string, err error) {
+	if !r.IsRunning() {
+		return "", errors.Errorf("%s is not running", r.Name())
+	}
+
 	// Fetch metrics.
 	res, err := (&http.Client{Timeout: 5 * time.Second}).Get(fmt.Sprintf("http://%s/metrics", r.Endpoint(r.metricPortName)))
 	if err != nil {
