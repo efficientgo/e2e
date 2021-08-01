@@ -30,25 +30,32 @@ func NewCompositeInstrumentedRunnable(runnables ...*InstrumentedRunnable) *Compo
 	}
 }
 
-func (s *CompositeInstrumentedRunnable) Instances() []*InstrumentedRunnable {
-	return s.runnables
+func (r *CompositeInstrumentedRunnable) Instances() []*InstrumentedRunnable {
+	return r.runnables
+}
+
+func (r *CompositeInstrumentedRunnable) MetricTargets() (ret []MetricTarget) {
+	for _, inst := range r.runnables {
+		ret = append(ret, inst.MetricTargets()...)
+	}
+	return ret
 }
 
 // WaitSumMetrics waits for at least one instance of each given metric names to be present and their sums, returning true
 // when passed to given expected(...).
-func (s *CompositeInstrumentedRunnable) WaitSumMetrics(expected MetricValueExpectation, metricNames ...string) error {
-	return s.WaitSumMetricsWithOptions(expected, metricNames)
+func (r *CompositeInstrumentedRunnable) WaitSumMetrics(expected MetricValueExpectation, metricNames ...string) error {
+	return r.WaitSumMetricsWithOptions(expected, metricNames)
 }
 
-func (s *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExpectation, metricNames []string, opts ...MetricsOption) error {
+func (r *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExpectation, metricNames []string, opts ...MetricsOption) error {
 	var (
 		sums    []float64
 		err     error
 		options = buildMetricsOptions(opts)
 	)
 
-	for s.backoff.Reset(); s.backoff.Ongoing(); {
-		sums, err = s.SumMetrics(metricNames, opts...)
+	for r.backoff.Reset(); r.backoff.Ongoing(); {
+		sums, err = r.SumMetrics(metricNames, opts...)
 		if options.waitMissingMetrics && errors.Is(err, errMissingMetric) {
 			continue
 		}
@@ -60,7 +67,7 @@ func (s *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected Metri
 			return nil
 		}
 
-		s.backoff.Wait()
+		r.backoff.Wait()
 	}
 
 	return errors.Errorf("unable to find metrics %s with expected values. Last error: %v. Last values: %v", metricNames, err, sums)

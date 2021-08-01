@@ -19,12 +19,25 @@ import (
 
 var errMissingMetric = errors.New("metric not found")
 
+type MetricTarget struct {
+	InternalEndpoint string
+	MetricPath       string
+}
+
+// Instrumented is implemented by all instrumented runnables.
+type Instrumented interface {
+	MetricTargets() []MetricTarget
+}
+
+var _ Instrumented = &InstrumentedRunnable{}
+
 // InstrumentedRunnable represents opinionated microservice with one port marked as HTTP port with metric endpoint.
 type InstrumentedRunnable struct {
 	Runnable
 
 	name           string
 	metricPortName string
+	metricPath     string
 	ports          map[string]int
 
 	waitBackoff *backoff.Backoff
@@ -36,31 +49,27 @@ type FutureInstrumentedRunnable struct {
 	r *InstrumentedRunnable
 }
 
-func NewFutureInstrumentedRunnable(
+func NewInstrumentedRunnable(
 	env Environment,
 	name string,
 	ports map[string]int,
 	metricPortName string,
 ) *FutureInstrumentedRunnable {
 	f := &FutureInstrumentedRunnable{
-		r: &InstrumentedRunnable{name: name, ports: ports, metricPortName: metricPortName},
+		r: &InstrumentedRunnable{name: name, ports: ports, metricPortName: metricPortName, metricPath: "/metrics"},
 	}
 
 	if _, ok := ports[metricPortName]; !ok {
-		f.FutureRunnable = NewErrRunnable(name, errors.Errorf("metric port name %v does not exists in given ports", metricPortName))
+		f.FutureRunnable = NewErrorer(name, errors.Errorf("metric port name %v does not exists in given ports", metricPortName))
 		return f
 	}
-	f.FutureRunnable = env.FutureRunnable(name, ports)
+	f.FutureRunnable = env.Runnable(name).WithPorts(ports).WithConcreteType(f.r).Future()
 	return f
-}
-
-func NewInstrumentedRunnable(env Environment, name string, ports map[string]int, metricPortName string, opts StartOptions) *InstrumentedRunnable {
-	return NewFutureInstrumentedRunnable(env, name, ports, metricPortName).Init(opts)
 }
 
 func NewErrInstrumentedRunnable(name string, err error) *InstrumentedRunnable {
 	return &InstrumentedRunnable{
-		Runnable: NewErrRunnable(name, err),
+		Runnable: NewErrorer(name, err),
 	}
 }
 
@@ -76,6 +85,10 @@ func (r *FutureInstrumentedRunnable) Init(opts StartOptions) *InstrumentedRunnab
 	r.r.waitBackoff = backoff.New(context.Background(), *opts.WaitReadyBackoff)
 	r.r.Runnable = r.FutureRunnable.Init(opts)
 	return r.r
+}
+
+func (r *InstrumentedRunnable) MetricTargets() []MetricTarget {
+	return []MetricTarget{{MetricPath: r.metricPath, InternalEndpoint: r.InternalEndpoint(r.metricPortName)}}
 }
 
 func (r *InstrumentedRunnable) Metrics() (_ string, err error) {

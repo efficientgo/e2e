@@ -42,13 +42,18 @@ func WithVerbose() EnvironmentOption {
 
 // Environment defines how to run Runnable in isolated area e.g via docker in isolated docker network.
 type Environment interface {
+	// SharedDir returns host directory that will be shared with all runnables.
 	SharedDir() string
-	// Runnable returns instance of runnable which can be started and stopped within this environment.
-	Runnable(name string, Ports map[string]int, opts StartOptions) Runnable
-	// FutureRunnable returns instance of runnable which can be started and stopped within this environment.
-	FutureRunnable(name string, Ports map[string]int) FutureRunnable
-	// Close shutdowns isolated environment and cleans it's resources.
+	// Runnable returns runnable builder which can build runnables that can be started and stopped within this environment.
+	Runnable(name string) RunnableBuilder
+	// AddListener registers given listener to be notified on environment runnable changes.
+	AddListener(listener EnvironmentListener)
+	// Close shutdowns isolated environment and cleans its resources.
 	Close()
+}
+
+type EnvironmentListener interface {
+	OnRunnableChange(started []Runnable) error
 }
 
 type StartOptions struct {
@@ -57,8 +62,11 @@ type StartOptions struct {
 	User      string
 	Command   Command
 	Readiness ReadinessProbe
-	// WaitReadyBackoff represents backoff used for WaitReady.
+	// WaitReadyBackofff represents backoff used for WaitReady.
 	WaitReadyBackoff *backoff.Config
+	Volumes          []string
+	UserNs           string
+	Privileged       bool
 }
 
 // Linkable is the entity that one can use to link runnable to other runnables before started.
@@ -84,8 +92,24 @@ type FutureRunnable interface {
 	Init(opts StartOptions) Runnable
 }
 
+type RunnableBuilder interface {
+	WithPorts(map[string]int) RunnableBuilder
+	WithConcreteType(r Runnable) RunnableBuilder
+
+	// Future returns future runnable
+	Future() FutureRunnable
+	// Init returns runnable.
+	Init(opts StartOptions) Runnable
+}
+
+type identificable interface {
+	id() uintptr
+}
+
 // Runnable is the entity that environment returns to manage single instance.
 type Runnable interface {
+	identificable
+
 	Linkable
 
 	// IsRunning returns if runnable was started.

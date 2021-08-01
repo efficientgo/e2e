@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/efficientgo/tools/core/pkg/backoff"
 	"github.com/pkg/errors"
@@ -36,6 +37,7 @@ type DockerEnvironment struct {
 	networkName string
 
 	registered map[string]struct{}
+	listeners  []EnvironmentListener
 	started    []Runnable
 
 	verbose bool
@@ -85,58 +87,63 @@ func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnviro
 	return d, nil
 }
 
-func (e *DockerEnvironment) Runnable(name string, ports map[string]int, opts StartOptions) Runnable {
-	return e.FutureRunnable(name, ports).Init(opts)
-}
-
-func (e *DockerEnvironment) FutureRunnable(name string, ports map[string]int) FutureRunnable {
+func (e *DockerEnvironment) Runnable(name string) RunnableBuilder {
 	if e.closed {
-		return ErrRunnable{name: name, err: errors.New("environment close was invoked already.")}
+		return Errorer{name: name, err: errors.New("environment close was invoked already.")}
 	}
 
 	if e.isRegistered(name) {
-		return ErrRunnable{name: name, err: errors.Errorf("there is already one runnable created with the same name %v", name)}
+		return Errorer{name: name, err: errors.Errorf("there is already one runnable created with the same name %v", name)}
 	}
 
 	d := &dockerRunnable{
 		env:       e,
 		name:      name,
-		ports:     ports,
 		logger:    e.logger,
+		ports:     map[string]int{},
 		hostPorts: map[string]int{},
 	}
+	d.concreteType = d
 	if err := os.MkdirAll(d.Dir(), 0750); err != nil {
-		return ErrRunnable{name: name, err: err}
+		return Errorer{name: name, err: err}
 	}
-
 	e.register(name)
 	return d
 }
 
-type ErrRunnable struct {
+// AddListener registers given listener to be notified on environment runnable changes.
+func (e *DockerEnvironment) AddListener(listener EnvironmentListener) {
+	e.listeners = append(e.listeners, listener)
+}
+
+type Errorer struct {
 	name string
 	err  error
 }
 
-func NewErrRunnable(name string, err error) ErrRunnable {
-	return ErrRunnable{
+func NewErrorer(name string, err error) Errorer {
+	return Errorer{
 		name: name,
 		err:  err,
 	}
 }
 
-func (r ErrRunnable) Name() string                         { return r.name }
-func (ErrRunnable) Dir() string                            { return "" }
-func (ErrRunnable) InternalDir() string                    { return "" }
-func (r ErrRunnable) Start() error                         { return r.err }
-func (r ErrRunnable) WaitReady() error                     { return r.err }
-func (r ErrRunnable) Kill() error                          { return r.err }
-func (r ErrRunnable) Stop() error                          { return r.err }
-func (r ErrRunnable) Exec(Command) (string, string, error) { return "", "", r.err }
-func (ErrRunnable) Endpoint(string) string                 { return "" }
-func (ErrRunnable) InternalEndpoint(string) string         { return "" }
-func (ErrRunnable) IsRunning() bool                        { return false }
-func (r ErrRunnable) Init(StartOptions) Runnable           { return r }
+func (e Errorer) id() uintptr                               { return 0 }
+func (e Errorer) Name() string                              { return e.name }
+func (Errorer) Dir() string                                 { return "" }
+func (Errorer) InternalDir() string                         { return "" }
+func (e Errorer) Start() error                              { return e.err }
+func (e Errorer) WaitReady() error                          { return e.err }
+func (e Errorer) Kill() error                               { return e.err }
+func (e Errorer) Stop() error                               { return e.err }
+func (e Errorer) Exec(Command) (string, string, error)      { return "", "", e.err }
+func (Errorer) Endpoint(string) string                      { return "" }
+func (Errorer) InternalEndpoint(string) string              { return "" }
+func (Errorer) IsRunning() bool                             { return false }
+func (e Errorer) Init(StartOptions) Runnable                { return e }
+func (e Errorer) WithPorts(map[string]int) RunnableBuilder  { return e }
+func (e Errorer) WithConcreteType(Runnable) RunnableBuilder { return e }
+func (e Errorer) Future() FutureRunnable                    { return e }
 
 func (e *DockerEnvironment) isRegistered(name string) bool {
 	_, ok := e.registered[name]
@@ -147,16 +154,30 @@ func (e *DockerEnvironment) register(name string) {
 	e.registered[name] = struct{}{}
 }
 
-func (e *DockerEnvironment) registerStarted(r Runnable) {
+func (e *DockerEnvironment) registerStarted(r Runnable) error {
 	e.started = append(e.started, r)
+
+	for _, l := range e.listeners {
+		if err := l.OnRunnableChange(e.started); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (e *DockerEnvironment) registerStopped(name string) {
+func (e *DockerEnvironment) registerStopped(name string) error {
 	for i, r := range e.started {
 		if r.Name() == name {
 			e.started = append(e.started[:i], e.started[i+1:]...)
+			for _, l := range e.listeners {
+				if err := l.OnRunnableChange(e.started); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
 	}
+	return nil
 }
 
 func (e *DockerEnvironment) SharedDir() string {
@@ -166,8 +187,12 @@ func (e *DockerEnvironment) SharedDir() string {
 func (e *DockerEnvironment) buildDockerRunArgs(name string, ports map[string]int, opts StartOptions) []string {
 	args := []string{"run", "--rm", "--net=" + e.networkName, "--name=" + dockerNetworkContainerHost(e.networkName, name), "--hostname=" + name}
 
-	// Mount the shared/ directory into the container. We share all containers dir to each othe to allow easier scenarios.
+	// Mount the shared/ directory into the container. We share all containers dir to each other to allow easier scenarios.
 	args = append(args, "-v", fmt.Sprintf("%s:%s:z", e.dir, dockerLocalSharedDir))
+
+	for _, v := range opts.Volumes {
+		args = append(args, "-v", v)
+	}
 
 	// Environment variables
 	for name, value := range opts.EnvVars {
@@ -178,6 +203,13 @@ func (e *DockerEnvironment) buildDockerRunArgs(name string, ports map[string]int
 		args = append(args, "--user", opts.User)
 	}
 
+	if opts.UserNs != "" {
+		args = append(args, "--userns", opts.UserNs)
+	}
+
+	if opts.Privileged {
+		args = append(args, "--privileged")
+	}
 	// Published ports.
 	for _, port := range ports {
 		args = append(args, "-p", strconv.Itoa(port))
@@ -213,6 +245,8 @@ type dockerRunnable struct {
 
 	// hostPorts Maps port name to dynamically binded local ports.
 	hostPorts map[string]int
+
+	concreteType Runnable
 }
 
 func (d *dockerRunnable) Name() string {
@@ -241,6 +275,24 @@ func (d *dockerRunnable) Init(opts StartOptions) Runnable {
 	return d
 }
 
+func (d *dockerRunnable) WithPorts(ports map[string]int) RunnableBuilder {
+	d.ports = ports
+	return d
+}
+
+func (d *dockerRunnable) WithConcreteType(r Runnable) RunnableBuilder {
+	d.concreteType = r
+	return d
+}
+
+func (d *dockerRunnable) id() uintptr {
+	return uintptr(unsafe.Pointer(d))
+}
+
+func (d *dockerRunnable) Future() FutureRunnable {
+	return d
+}
+
 func (d *dockerRunnable) IsRunning() bool {
 	return d.usedNetworkName != ""
 }
@@ -249,6 +301,14 @@ func (d *dockerRunnable) IsRunning() bool {
 func (d *dockerRunnable) Start() (err error) {
 	if d.IsRunning() {
 		return errors.Errorf("%v is running. Stop or kill it first to restart.", d.Name())
+	}
+
+	i, ok := d.concreteType.(identificable)
+	if !ok {
+		return errors.Errorf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; not implementing identificable", d.concreteType)
+	}
+	if i.id() != d.id() {
+		return errors.Errorf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; id %v, expected %v", d.concreteType, i.id(), d.id())
 	}
 
 	d.logger.Log("Starting", d.Name())
@@ -276,7 +336,9 @@ func (d *dockerRunnable) Start() (err error) {
 		return err
 	}
 
-	d.env.registerStarted(d)
+	if err := d.env.registerStarted(d.concreteType); err != nil {
+		return err
+	}
 
 	// Get the dynamic local ports mapped to the container.
 	for portName, containerPort := range d.ports {
@@ -319,8 +381,7 @@ func (d *dockerRunnable) Stop() error {
 		return err
 	}
 	d.usedNetworkName = ""
-	d.env.registerStopped(d.Name())
-	return nil
+	return d.env.registerStopped(d.Name())
 }
 
 func (d *dockerRunnable) Kill() error {
@@ -340,8 +401,7 @@ func (d *dockerRunnable) Kill() error {
 	_, _ = d.env.exec("docker", "wait", d.containerName()).CombinedOutput()
 
 	d.usedNetworkName = ""
-	d.env.registerStopped(d.Name())
-	return nil
+	return d.env.registerStopped(d.Name())
 }
 
 // Endpoint returns external (from host perspective) service endpoint (host:port) for given port name.
@@ -463,7 +523,6 @@ func (d *dockerRunnable) WaitReady() (err error) {
 
 		d.waitBackoff.Wait()
 	}
-
 	return errors.Wrapf(err, "the service %s is not ready", d.Name())
 }
 
@@ -557,8 +616,9 @@ func (e *DockerEnvironment) close() {
 
 	// Kill the services in the opposite order.
 	for i := len(e.started) - 1; i >= 0; i-- {
+		n := e.started[i].Name()
 		if err := e.started[i].Kill(); err != nil {
-			e.logger.Log("Unable to kill service", e.started[i].Name(), ":", err.Error())
+			e.logger.Log("Unable to kill service", n, ":", err.Error())
 		}
 	}
 
