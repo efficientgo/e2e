@@ -14,6 +14,7 @@ import (
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
+	e2emonitoring "github.com/efficientgo/e2e/monitoring"
 	"github.com/efficientgo/tools/core/pkg/merrors"
 	"github.com/oklog/run"
 )
@@ -36,12 +37,13 @@ func newThanosQuerier(env e2e.Environment, name string, endpointsAddresses ...st
 	for _, e := range endpointsAddresses {
 		args = append(args, "--store="+e)
 	}
-	return e2e.NewInstrumentedRunnable(env, name, ports, "http", e2e.StartOptions{
-		Image:     "quay.io/thanos/thanos:v0.21.1",
-		Command:   e2e.NewCommand("query", args...),
-		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
-		User:      strconv.Itoa(os.Getuid()),
-	})
+	return e2e.NewInstrumentedRunnable(env, name, ports, "http").Init(
+		e2e.StartOptions{
+			Image:     "quay.io/thanos/thanos:v0.21.1",
+			Command:   e2e.NewCommand("query", args...),
+			Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
+			User:      strconv.Itoa(os.Getuid()),
+		})
 }
 
 func newThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable) *e2e.InstrumentedRunnable {
@@ -49,21 +51,22 @@ func newThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable) *e2e.
 		"http": 9090,
 		"grpc": 9091,
 	}
-	return e2e.NewInstrumentedRunnable(env, name, ports, "http", e2e.StartOptions{
-		Image: "quay.io/thanos/thanos:v0.21.1",
-		Command: e2e.NewCommand("sidecar", e2e.BuildArgs(map[string]string{
-			"--debug.name":     name,
-			"--grpc-address":   fmt.Sprintf(":%d", ports["grpc"]),
-			"--http-address":   fmt.Sprintf(":%d", ports["http"]),
-			"--prometheus.url": "http://" + prom.InternalEndpoint(e2edb.AccessPortName),
-			"--log.level":      "info",
-		})...),
-		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
-		User:      strconv.Itoa(os.Getuid()),
-	})
+	return e2e.NewInstrumentedRunnable(env, name, ports, "http").Init(
+		e2e.StartOptions{
+			Image: "quay.io/thanos/thanos:v0.21.1",
+			Command: e2e.NewCommand("sidecar", e2e.BuildArgs(map[string]string{
+				"--debug.name":     name,
+				"--grpc-address":   fmt.Sprintf(":%d", ports["grpc"]),
+				"--http-address":   fmt.Sprintf(":%d", ports["http"]),
+				"--prometheus.url": "http://" + prom.InternalEndpoint(e2edb.AccessPortName),
+				"--log.level":      "info",
+			})...),
+			Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
+			User:      strconv.Itoa(os.Getuid()),
+		})
 }
 
-func deploy(ctx context.Context) error {
+func deployWithMonitoring(ctx context.Context) error {
 	// Start isolated environment with given ref.
 	e, err := e2e.NewDockerEnvironment("e2e_example")
 	if err != nil {
@@ -71,6 +74,11 @@ func deploy(ctx context.Context) error {
 	}
 	// Make sure resources (e.g docker containers, network, dir) are cleaned.
 	defer e.Close()
+
+	mon, err := e2emonitoring.Start(e)
+	if err != nil {
+		return err
+	}
 
 	// Create structs for Prometheus containers scraping itself.
 	p1 := e2edb.NewPrometheus(e, "prometheus-1")
@@ -103,6 +111,10 @@ func deploy(ctx context.Context) error {
 	if err := e2einteractive.OpenInBrowser("http://" + t1.Endpoint("http")); err != nil {
 		return err
 	}
+	// Open monitoring page with all metrics.
+	if err := mon.OpenUserInterfaceInBrowser(); err != nil {
+		return err
+	}
 	// For interactive mode, wait until user interrupt.
 	fmt.Println("Waiting on user interrupt (e.g Ctrl+C")
 	<-ctx.Done()
@@ -115,7 +127,7 @@ func main() {
 	g.Add(run.SignalHandler(context.Background(), syscall.SIGINT, syscall.SIGTERM))
 	{
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error { return deploy(ctx) }, func(error) { cancel() })
+		g.Add(func() error { return deployWithMonitoring(ctx) }, func(error) { cancel() })
 	}
 	if err := g.Run(); err != nil {
 		log.Fatal(err)

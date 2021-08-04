@@ -61,7 +61,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2e.In
 		"MINIO_KMS_KES_CERT_FILE=" + "root.cert",
 		"MINIO_KMS_KES_KEY_NAME=" + "my-minio-key",
 	}
-	f := e2e.NewFutureInstrumentedRunnable(env, name, ports, AccessPortName)
+	f := e2e.NewInstrumentedRunnable(env, name, ports, AccessPortName)
 	return f.Init(
 		e2e.StartOptions{
 			Image: o.image,
@@ -87,11 +87,7 @@ func NewConsul(env e2e.Environment, name string, opts ...Option) *e2e.Instrument
 	}
 
 	e2e.MergeFlags()
-	return e2e.NewInstrumentedRunnable(
-		env,
-		name,
-		map[string]int{AccessPortName: 8500},
-		AccessPortName,
+	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 8500}, AccessPortName).Init(
 		e2e.StartOptions{
 			Image: o.image,
 			// Run consul in "dev" mode so that the initial leader election is immediate.
@@ -107,11 +103,7 @@ func NewDynamoDB(env e2e.Environment, name string, opts ...Option) *e2e.Instrume
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(
-		env,
-		name,
-		map[string]int{AccessPortName: 8000},
-		AccessPortName,
+	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 8000}, AccessPortName).Init(
 		e2e.StartOptions{
 			Image:   o.image,
 			Command: e2e.NewCommand("-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"),
@@ -127,11 +119,7 @@ func NewBigtable(env e2e.Environment, name string, opts ...Option) *e2e.Instrume
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(
-		env,
-		name,
-		nil,
-		AccessPortName,
+	return e2e.NewInstrumentedRunnable(env, name, nil, AccessPortName).Init(
 		e2e.StartOptions{
 			Image: o.image,
 		},
@@ -144,11 +132,7 @@ func NewCassandra(env e2e.Environment, name string, opts ...Option) *e2e.Instrum
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(
-		env,
-		name,
-		map[string]int{AccessPortName: 9042},
-		AccessPortName,
+	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 9042}, AccessPortName).Init(
 		e2e.StartOptions{
 			Image: o.image,
 			// Readiness probe inspired from https://github.com/kubernetes/examples/blob/b86c9d50be45eaf5ce74dee7159ce38b0e149d38/cassandra/image/files/ready-probe.sh
@@ -163,11 +147,7 @@ func NewSwiftStorage(env e2e.Environment, name string, opts ...Option) *e2e.Inst
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(
-		env,
-		name,
-		map[string]int{AccessPortName: 8080},
-		AccessPortName,
+	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 8080}, AccessPortName).Init(
 		e2e.StartOptions{
 			Image:     o.image,
 			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/", 404, 404),
@@ -181,9 +161,7 @@ func NewMemcached(env e2e.Environment, name string, opts ...Option) e2e.Runnable
 		opt(&o)
 	}
 
-	return env.Runnable(
-		name,
-		map[string]int{AccessPortName: 11211},
+	return env.Runnable(name).WithPorts(map[string]int{AccessPortName: 11211}).Init(
 		e2e.StartOptions{
 			Image:     o.image,
 			Readiness: e2e.NewTCPReadinessProbe(AccessPortName),
@@ -197,14 +175,7 @@ func NewETCD(env e2e.Environment, name string, opts ...Option) *e2e.Instrumented
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(
-		env,
-		name,
-		map[string]int{
-			AccessPortName: 2379,
-			"metrics":      9000,
-		},
-		"metrics",
+	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 2379, "metrics": 9000}, "metrics").Init(
 		e2e.StartOptions{
 			Image:     o.image,
 			Command:   e2e.NewCommand("/usr/local/bin/etcd", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://0.0.0.0:2379", "--listen-metrics-urls=http://0.0.0.0:9000", "--log-level=error"),

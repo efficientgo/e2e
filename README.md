@@ -25,24 +25,25 @@ Let's go through an example leveraging `go test` flow:
 
 1. Implement the workload by embedding`e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in [e2edb](db/) package. For example implementing Thanos Querier with our desired configuration could look like this:
 
-   ```go mdox-exec="sed -n '47,64p' examples/thanos/standalone.go"
+   ```go mdox-exec="sed -n '49,67p' examples/thanos/standalone.go"
    func newThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable) *e2e.InstrumentedRunnable {
    	ports := map[string]int{
    		"http": 9090,
    		"grpc": 9091,
    	}
-   	return e2e.NewInstrumentedRunnable(env, name, ports, "http", e2e.StartOptions{
-   		Image: "quay.io/thanos/thanos:v0.21.1",
-   		Command: e2e.NewCommand("sidecar", e2e.BuildArgs(map[string]string{
-   			"--debug.name":     name,
-   			"--grpc-address":   fmt.Sprintf(":%d", ports["grpc"]),
-   			"--http-address":   fmt.Sprintf(":%d", ports["http"]),
-   			"--prometheus.url": "http://" + prom.InternalEndpoint(e2edb.AccessPortName),
-   			"--log.level":      "info",
-   		})...),
-   		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
-   		User:      strconv.Itoa(os.Getuid()),
-   	})
+   	return e2e.NewInstrumentedRunnable(env, name, ports, "http").Init(
+   		e2e.StartOptions{
+   			Image: "quay.io/thanos/thanos:v0.21.1",
+   			Command: e2e.NewCommand("sidecar", e2e.BuildArgs(map[string]string{
+   				"--debug.name":     name,
+   				"--grpc-address":   fmt.Sprintf(":%d", ports["grpc"]),
+   				"--http-address":   fmt.Sprintf(":%d", ports["http"]),
+   				"--prometheus.url": "http://" + prom.InternalEndpoint(e2edb.AccessPortName),
+   				"--log.level":      "info",
+   			})...),
+   			Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
+   			User:      strconv.Itoa(os.Getuid()),
+   		})
    }
    ```
 
@@ -118,6 +119,30 @@ Let's go through an example leveraging `go test` flow:
    	}
    }
    ```
+
+### Monitoring
+
+Each instrumented workload have programmatic access to latest metrics with `WaitSumMetricsWithOptions` methods family. Yet, especially for standalone mode it's often useful to query yourself and visualisate metrics provided by your workloads and environment. In order to do so just start monitoring from `e2emontioring` package:
+
+```go
+mon, err := e2emonitoring.Start(e)
+if err != nil {
+	return err
+}
+```
+
+This will start Prometheus with automatic discovery for every new and old instrumented runnables being scraped. It also runs cadvisor that monitors docker itself if `env.DockerEnvironment` is started. Run `OpenUserInterfaceInBrowser()` to open Prometheus UI in browser.
+
+```go
+	// Open monitoring page with all metrics.
+	if err := mon.OpenUserInterfaceInBrowser(); err != nil {
+		return err
+	}
+```
+
+To see how it works in practice run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end two UI should show in your browser. Thanos one and monitoring one. You can then e.g query docker container metrics using `sum(container_memory_working_set_bytes{name!=""}) by (name)` metric e.g:
+
+![mem metric](monitoring.png)
 
 ## Credits
 

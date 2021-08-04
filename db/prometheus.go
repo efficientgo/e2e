@@ -26,7 +26,7 @@ func NewPrometheus(env e2e.Environment, name string, opts ...Option) *Prometheus
 
 	ports := map[string]int{"http": 9090}
 
-	f := e2e.NewFutureInstrumentedRunnable(env, name, ports, "http")
+	f := e2e.NewInstrumentedRunnable(env, name, ports, "http")
 	config := fmt.Sprintf(`
 global:
   external_labels:
