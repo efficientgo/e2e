@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"strconv"
 	"syscall"
 
 	"github.com/efficientgo/e2e"
@@ -17,54 +15,8 @@ import (
 	e2emonitoring "github.com/efficientgo/e2e/monitoring"
 	"github.com/efficientgo/tools/core/pkg/merrors"
 	"github.com/oklog/run"
+	"github.com/pkg/errors"
 )
-
-func newThanosQuerier(env e2e.Environment, name string, endpointsAddresses ...string) *e2e.InstrumentedRunnable {
-	ports := map[string]int{
-		"http": 9090,
-		"grpc": 9091,
-	}
-
-	args := e2e.BuildArgs(map[string]string{
-		"--debug.name":           name,
-		"--grpc-address":         fmt.Sprintf(":%d", ports["grpc"]),
-		"--http-address":         fmt.Sprintf(":%d", ports["http"]),
-		"--query.replica-label":  "replica",
-		"--log.level":            "info",
-		"--query.max-concurrent": "1",
-	})
-
-	for _, e := range endpointsAddresses {
-		args = append(args, "--store="+e)
-	}
-	return e2e.NewInstrumentedRunnable(env, name, ports, "http").Init(
-		e2e.StartOptions{
-			Image:     "quay.io/thanos/thanos:v0.21.1",
-			Command:   e2e.NewCommand("query", args...),
-			Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
-			User:      strconv.Itoa(os.Getuid()),
-		})
-}
-
-func newThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable) *e2e.InstrumentedRunnable {
-	ports := map[string]int{
-		"http": 9090,
-		"grpc": 9091,
-	}
-	return e2e.NewInstrumentedRunnable(env, name, ports, "http").Init(
-		e2e.StartOptions{
-			Image: "quay.io/thanos/thanos:v0.21.1",
-			Command: e2e.NewCommand("sidecar", e2e.BuildArgs(map[string]string{
-				"--debug.name":     name,
-				"--grpc-address":   fmt.Sprintf(":%d", ports["grpc"]),
-				"--http-address":   fmt.Sprintf(":%d", ports["http"]),
-				"--prometheus.url": "http://" + prom.InternalEndpoint(e2edb.AccessPortName),
-				"--log.level":      "info",
-			})...),
-			Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
-			User:      strconv.Itoa(os.Getuid()),
-		})
-}
 
 func deployWithMonitoring(ctx context.Context) error {
 	// Start isolated environment with given ref.
@@ -75,24 +27,44 @@ func deployWithMonitoring(ctx context.Context) error {
 	// Make sure resources (e.g docker containers, network, dir) are cleaned.
 	defer e.Close()
 
-	mon, err := e2emonitoring.Start(e)
+	// NOTE: This will error out on first run, demanding to setup permissions for cgroups.
+	// Remove `WithCurrentProcessAsContainer` to avoid that. This will also descope monitoring current process itself
+	// and focus on scheduled containers only.
+	mon, err := e2emonitoring.Start(e, e2emonitoring.WithCurrentProcessAsContainer())
 	if err != nil {
 		return err
 	}
 
+	// Setup Jaeger for example purposes, on how easy is to setup tracing pipeline in e2e framework.
+	j := e.Runnable("tracing").
+		WithPorts(
+			map[string]int{
+				"http.front":    16686,
+				"jaeger.thrift": 14268,
+			}).
+		Init(e2e.StartOptions{Image: "jaegertracing/all-in-one:1.25"})
+
+	jaegerConfig := fmt.Sprintf(`type: JAEGER
+config:
+  service_name: thanos
+  sampler_type: const
+  sampler_param: 1
+  endpoint: http://%s/api/traces`, j.InternalEndpoint("jaeger.thrift"),
+	)
+
 	// Create structs for Prometheus containers scraping itself.
 	p1 := e2edb.NewPrometheus(e, "prometheus-1")
-	s1 := newThanosSidecar(e, "sidecar-1", p1)
+	s1 := e2edb.NewThanosSidecar(e, "sidecar-1", p1, e2edb.WithFlagOverride(map[string]string{"--tracing.config": jaegerConfig}))
 
 	p2 := e2edb.NewPrometheus(e, "prometheus-2")
-	s2 := newThanosSidecar(e, "sidecar-2", p2)
+	s2 := e2edb.NewThanosSidecar(e, "sidecar-2", p2, e2edb.WithFlagOverride(map[string]string{"--tracing.config": jaegerConfig}))
 
 	// Create Thanos Query container. We can point the peer network addresses of both Prometheus instance
 	// using InternalEndpoint methods, even before they started.
-	t1 := newThanosQuerier(e, "query-1", s1.InternalEndpoint("grpc"), s2.InternalEndpoint("grpc"))
+	t1 := e2edb.NewThanosQuerier(e, "query-1", []string{s1.InternalEndpoint("grpc"), s2.InternalEndpoint("grpc")}, e2edb.WithFlagOverride(map[string]string{"--tracing.config": jaegerConfig}))
 
 	// Start them.
-	if err := e2e.StartAndWaitReady(p1, s1, p2, s2, t1); err != nil {
+	if err := e2e.StartAndWaitReady(j, p1, s1, p2, s2, t1); err != nil {
 		return err
 	}
 
@@ -109,17 +81,35 @@ func deployWithMonitoring(ctx context.Context) error {
 
 	// We can now open Thanos query UI in our browser, why not! We can use its host address thanks to Endpoint method.
 	if err := e2einteractive.OpenInBrowser("http://" + t1.Endpoint("http")); err != nil {
-		return err
+		return errors.Wrap(err, "open Thanos UI in browser")
 	}
 	// Open monitoring page with all metrics.
 	if err := mon.OpenUserInterfaceInBrowser(); err != nil {
-		return err
+		return errors.Wrap(err, "open monitoring UI in browser")
 	}
+	// Open jaeger UI.
+	if err := e2einteractive.OpenInBrowser("http://" + j.Endpoint("http.front")); err != nil {
+		return errors.Wrap(err, "open Jaeger UI in browser")
+	}
+
 	// For interactive mode, wait until user interrupt.
 	fmt.Println("Waiting on user interrupt (e.g Ctrl+C")
 	<-ctx.Done()
 	return nil
 }
+
+//func Heap(dir string) (err error) {
+//	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+//		return err
+//	}
+//
+//	f, err := os.Create(filepath.Join(dir, "mem.pprof"))
+//	if err != nil {
+//		return err
+//	}
+//	defer errcapture.Do(&err, f.Close, "close")
+//	return pprof.WriteHeapProfile(f)
+//}
 
 // In order to run it, invoke make run-example from repo root or just go run it.
 func main() {
