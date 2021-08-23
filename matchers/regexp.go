@@ -29,7 +29,7 @@ type FastRegexMatcher struct {
 	contains string
 }
 
-func NewFastRegexMatcher(v string) (*FastRegexMatcher, error) {
+func newFastRegexMatcher(v string) (*FastRegexMatcher, error) {
 	re, err := regexp.Compile("^(?:" + v + ")$")
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func NewFastRegexMatcher(v string) (*FastRegexMatcher, error) {
 	return m, nil
 }
 
-func (m *FastRegexMatcher) MatchString(s string) bool {
+func (m *FastRegexMatcher) matchString(s string) bool {
 	if m.prefix != "" && !strings.HasPrefix(s, m.prefix) {
 		return false
 	}
