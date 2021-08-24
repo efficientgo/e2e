@@ -59,7 +59,7 @@ func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
 		Value: v,
 	}
 	if t == MatchRegexp || t == MatchNotRegexp {
-		re, err := NewFastRegexMatcher(v)
+		re, err := newFastRegexMatcher(v)
 		if err != nil {
 			return nil, err
 		}
@@ -89,9 +89,9 @@ func (m *Matcher) Matches(s string) bool {
 	case MatchNotEqual:
 		return s != m.Value
 	case MatchRegexp:
-		return m.re.MatchString(s)
+		return m.re.matchString(s)
 	case MatchNotRegexp:
-		return !m.re.MatchString(s)
+		return !m.re.matchString(s)
 	}
 	panic("labels.Matcher.Matches: invalid match type")
 }

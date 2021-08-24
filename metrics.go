@@ -6,7 +6,7 @@ package e2e
 import (
 	"math"
 
-	"github.com/efficientgo/e2e/internal/matchers"
+	"github.com/efficientgo/e2e/matchers"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
