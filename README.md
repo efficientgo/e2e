@@ -25,14 +25,15 @@ Let's go through an example leveraging `go test` flow:
 
 1. Implement the workload by embedding`e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in [e2edb](db/) package. For example implementing function that schedules Jaeger with our desired configuration could look like this:
 
-   ```go mdox-exec="sed -n '37,43p' examples/thanos/standalone.go"
-
+   ```go mdox-exec="sed -n '38,45p' examples/thanos/standalone.go"
    	// Setup Jaeger for example purposes, on how easy is to setup tracing pipeline in e2e framework.
    	j := e.Runnable("tracing").
-        WithPorts(
-            map[string]int{
-                "http.front":    16686,
-                "jaeger.thrift": 14268,
+   		WithPorts(
+   			map[string]int{
+   				"http.front":    16686,
+   				"jaeger.thrift": 14268,
+   			}).
+   		Init(e2e.StartOptions{Image: "jaegertracing/all-in-one:1.25"})
    ```
 
 2. Implement test. Start by creating environment. Currently `e2e` supports Docker environment only. Use unique name for all your tests. It's recommended to keep it stable so resources are consistently cleaned.
