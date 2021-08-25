@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -22,7 +23,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-const dockerLocalSharedDir = "/shared"
+const (
+	dockerLocalSharedDir = "/shared"
+)
 
 var (
 	dockerPortPattern = regexp.MustCompile(`^.*:(\d+)`)
@@ -36,11 +39,14 @@ type DockerEnvironment struct {
 	logger      Logger
 	networkName string
 
+	hostAddr string
+
 	registered map[string]struct{}
 	listeners  []EnvironmentListener
 	started    []Runnable
 
 	verbose bool
+	closers []func()
 	closed  bool
 }
 
@@ -79,12 +85,43 @@ func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnviro
 	d.dir = dir
 
 	// Setup the docker network.
-	if out, err := d.exec("docker", "network", "create", name).CombinedOutput(); err != nil {
+	if out, err := d.exec("docker", "network", "create", "-d", "bridge", name).CombinedOutput(); err != nil {
 		e.logger.Log(string(out))
 		d.Close()
 		return nil, errors.Wrapf(err, "create docker network '%s'", name)
 	}
+
+	out, err := d.exec("docker", "network", "inspect", name).CombinedOutput()
+	if err != nil {
+		e.logger.Log(string(out))
+		d.Close()
+		return nil, errors.Wrapf(err, "inspect docker network '%s'", name)
+	}
+
+	var inspectDetails []struct {
+		IPAM struct {
+			Config []struct {
+				Gateway string `json:"Gateway"`
+			} `json:"Config"`
+		} `json:"IPAM"`
+	}
+	if err := json.Unmarshal(out, &inspectDetails); err != nil {
+		return nil, errors.Wrap(err, "unmarshall docker inspect details to obtain Gateway IP")
+	}
+
+	if len(inspectDetails) != 1 || len(inspectDetails[0].IPAM.Config) != 1 {
+		return nil, errors.Errorf("unexpected format of docker inspect; expected exactly one element in root and IPAM.Config, got %v", string(out))
+	}
+
+	d.hostAddr = inspectDetails[0].IPAM.Config[0].Gateway
 	return d, nil
+}
+
+func (e *DockerEnvironment) HostAddr() string { return e.hostAddr }
+func (e *DockerEnvironment) Name() string     { return e.networkName }
+
+func (e *DockerEnvironment) AddCloser(f func()) {
+	e.closers = append(e.closers, f)
 }
 
 func (e *DockerEnvironment) Runnable(name string) RunnableBuilder {
@@ -592,6 +629,9 @@ func getTmpDirectory() (string, error) {
 }
 
 func (e *DockerEnvironment) Close() {
+	for _, c := range e.closers {
+		c()
+	}
 	e.close()
 	e.closed = true
 }

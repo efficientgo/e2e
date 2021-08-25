@@ -27,14 +27,14 @@ func TestExample(t *testing.T) {
 
 	// Create structs for Prometheus containers scraping itself.
 	p1 := e2edb.NewPrometheus(e, "prometheus-1")
-	s1 := newThanosSidecar(e, "sidecar-1", p1)
+	s1 := e2edb.NewThanosSidecar(e, "sidecar-1", p1)
 
 	p2 := e2edb.NewPrometheus(e, "prometheus-2")
-	s2 := newThanosSidecar(e, "sidecar-2", p2)
+	s2 := e2edb.NewThanosSidecar(e, "sidecar-2", p2)
 
 	// Create Thanos Query container. We can point the peer network addresses of both Prometheus instance
 	// using InternalEndpoint methods, even before they started.
-	t1 := newThanosQuerier(e, "query-1", s1.InternalEndpoint("grpc"), s2.InternalEndpoint("grpc"))
+	t1 := e2edb.NewThanosQuerier(e, "query-1", []string{s1.InternalEndpoint("grpc"), s2.InternalEndpoint("grpc")})
 
 	// Start them.
 	testutil.Ok(t, e2e.StartAndWaitReady(p1, s1, p2, s2, t1))

@@ -42,12 +42,18 @@ func WithVerbose() EnvironmentOption {
 
 // Environment defines how to run Runnable in isolated area e.g via docker in isolated docker network.
 type Environment interface {
+	// Name returns environment name.
+	Name() string
 	// SharedDir returns host directory that will be shared with all runnables.
 	SharedDir() string
+	// HostAddr returns host address that is available from runnables.
+	HostAddr() string
 	// Runnable returns runnable builder which can build runnables that can be started and stopped within this environment.
 	Runnable(name string) RunnableBuilder
 	// AddListener registers given listener to be notified on environment runnable changes.
 	AddListener(listener EnvironmentListener)
+	// AddCloser registers function to be invoked on close.
+	AddCloser(func())
 	// Close shutdowns isolated environment and cleans its resources.
 	Close()
 }
@@ -56,6 +62,7 @@ type EnvironmentListener interface {
 	OnRunnableChange(started []Runnable) error
 }
 
+// StartOptions represents starting option of runnable in the environment.
 type StartOptions struct {
 	Image     string
 	EnvVars   map[string]string
