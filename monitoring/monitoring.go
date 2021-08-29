@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/containerd/cgroups"
@@ -35,7 +36,8 @@ type Service struct {
 type listener struct {
 	p *e2edb.Prometheus
 
-	localAddr string
+	localAddr      string
+	scrapeInterval time.Duration
 }
 
 func (l *listener) updateConfig(started map[string]e2e.Instrumented) error {
@@ -44,7 +46,7 @@ func (l *listener) updateConfig(started map[string]e2e.Instrumented) error {
 	cfg := promconfig.Config{
 		GlobalConfig: promconfig.GlobalConfig{
 			ExternalLabels: map[model.LabelName]model.LabelValue{"prometheus": model.LabelValue(l.p.Name())},
-			ScrapeInterval: model.Duration(15 * time.Second),
+			ScrapeInterval: model.Duration(l.scrapeInterval),
 		},
 	}
 
@@ -106,6 +108,7 @@ func (l *listener) OnRunnableChange(started []e2e.Runnable) error {
 
 type opt struct {
 	currentProcessAsContainer bool
+	scrapeInterval            time.Duration
 }
 
 // WithCurrentProcessAsContainer makes Start put current process PID into cgroups and organize
@@ -117,12 +120,19 @@ func WithCurrentProcessAsContainer() func(*opt) {
 	}
 }
 
+// WithScrapeInterval changes how often metrics are scrape by Prometheus. 5s by default.
+func WithScrapeInterval(interval time.Duration) func(*opt) {
+	return func(o *opt) {
+		o.scrapeInterval = interval
+	}
+}
+
 type Option func(*opt)
 
 // Start deploys monitoring service which deploys Prometheus that monitors all registered InstrumentedServices
 // in environment.
 func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
-	opt := opt{}
+	opt := opt{scrapeInterval: 5 * time.Second}
 	for _, o := range opts {
 		o(&opt)
 	}
@@ -136,7 +146,13 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	)
 
 	m := http.NewServeMux()
-	m.Handle("/metrics", promhttp.HandlerFor(metrics, promhttp.HandlerOpts{}))
+	h := promhttp.HandlerFor(metrics, promhttp.HandlerOpts{})
+	o := sync.Once{}
+	scraped := make(chan struct{})
+	m.Handle("/metrics", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		o.Do(func() { close(scraped) })
+		h.ServeHTTP(w, req)
+	}))
 
 	// Listen on all addresses, since we need to connect to it from docker container.
 	list, err := net.Listen("tcp", "0.0.0.0:0")
@@ -154,7 +170,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	if err != nil {
 		return nil, err
 	}
-	l := &listener{p: p, localAddr: net.JoinHostPort(env.HostAddr(), port)}
+	l := &listener{p: p, localAddr: net.JoinHostPort(env.HostAddr(), port), scrapeInterval: opt.scrapeInterval}
 	if err := l.updateConfig(map[string]e2e.Instrumented{}); err != nil {
 		return nil, err
 	}
@@ -172,7 +188,18 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	if err := newCadvisor(env, "cadvisor", path...).Start(); err != nil {
 		return nil, err
 	}
-	return &Service{p: p}, e2e.StartAndWaitReady(p)
+
+	if err := e2e.StartAndWaitReady(p); err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-time.After(2 * time.Minute):
+		return nil, errors.New("Prometheus failed to scrape local endpoint after 2 minutes, check monitoring Prometheus logs")
+	case <-scraped:
+	}
+
+	return &Service{p: p}, nil
 }
 
 func (s *Service) OpenUserInterfaceInBrowser() error {

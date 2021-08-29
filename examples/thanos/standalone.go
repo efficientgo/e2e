@@ -44,7 +44,8 @@ func deployWithMonitoring(ctx context.Context) error {
 			}).
 		Init(e2e.StartOptions{Image: "jaegertracing/all-in-one:1.25"})
 
-	jaegerConfig := fmt.Sprintf(`type: JAEGER
+	jaegerConfig := fmt.Sprintf(
+		`type: JAEGER
 config:
   service_name: thanos
   sampler_type: const
@@ -97,19 +98,6 @@ config:
 	<-ctx.Done()
 	return nil
 }
-
-//func Heap(dir string) (err error) {
-//	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-//		return err
-//	}
-//
-//	f, err := os.Create(filepath.Join(dir, "mem.pprof"))
-//	if err != nil {
-//		return err
-//	}
-//	defer errcapture.Do(&err, f.Close, "close")
-//	return pprof.WriteHeapProfile(f)
-//}
 
 // In order to run it, invoke make run-example from repo root or just go run it.
 func main() {
