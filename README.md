@@ -123,10 +123,10 @@ if err != nil {
 This will start Prometheus with automatic discovery for every new and old instrumented runnables being scraped. It also runs cadvisor that monitors docker itself if `env.DockerEnvironment` is started and show generic performance metrics per container (e.g `container_memory_rss`). Run `OpenUserInterfaceInBrowser()` to open Prometheus UI in browser.
 
 ```go mdox-exec="sed -n '86,89p' examples/thanos/standalone.go"
+	}
 	// Open monitoring page with all metrics.
 	if err := mon.OpenUserInterfaceInBrowser(); err != nil {
 		return errors.Wrap(err, "open monitoring UI in browser")
-	}
 ```
 
 To see how it works in practice run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, three UIs should show in your browser. Thanos one, monitoring (Prometheus) one and tracing (Jaeger) one. In monitoring UI you can then e.g query docker container metrics using `container_memory_working_set_bytes{id!="/"}` metric e.g:
