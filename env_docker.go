@@ -247,6 +247,11 @@ func (e *DockerEnvironment) buildDockerRunArgs(name string, ports map[string]int
 	if opts.Privileged {
 		args = append(args, "--privileged")
 	}
+
+	for _, c := range opts.Capabilities {
+		args = append(args, "--cap-add", string(c))
+	}
+
 	// Published ports.
 	for _, port := range ports {
 		args = append(args, "-p", strconv.Itoa(port))
