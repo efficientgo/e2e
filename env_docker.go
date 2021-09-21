@@ -277,9 +277,10 @@ type dockerRunnable struct {
 	name  string
 	ports map[string]int
 
-	logger      Logger
-	opts        StartOptions
-	waitBackoff *backoff.Backoff
+	logger              Logger
+	opts                StartOptions
+	waitBackoffReady    *backoff.Backoff
+	waitBackoffDownload *backoff.Backoff
 
 	// usedNetworkName is docker NetworkName used to start this container.
 	// If empty it means container is stopped.
@@ -312,8 +313,17 @@ func (d *dockerRunnable) Init(opts StartOptions) Runnable {
 		}
 	}
 
+	if opts.WaitDownloadBackoff == nil {
+		opts.WaitDownloadBackoff = &backoff.Config{
+			Min:        500 * time.Millisecond,
+			Max:        1 * time.Second,
+			MaxRetries: 100,
+		}
+	}
+
 	d.opts = opts
-	d.waitBackoff = backoff.New(context.Background(), *opts.WaitReadyBackoff)
+	d.waitBackoffReady = backoff.New(context.Background(), *opts.WaitReadyBackoff)
+	d.waitBackoffDownload = backoff.New(context.Background(), *opts.WaitDownloadBackoff)
 	return d
 }
 
@@ -372,6 +382,11 @@ func (d *dockerRunnable) Start() (err error) {
 		return err
 	}
 	d.usedNetworkName = d.env.networkName
+
+	// Make sure the image is available locally; if not wait for it to download.
+	if err = d.waitForImageDownload(); err != nil {
+		return err
+	}
 
 	// Wait until the container has been started.
 	if err = d.waitForRunning(); err != nil {
@@ -512,7 +527,7 @@ func (d *dockerRunnable) waitForRunning() (err error) {
 	}
 
 	var out []byte
-	for d.waitBackoff.Reset(); d.waitBackoff.Ongoing(); {
+	for d.waitBackoffReady.Reset(); d.waitBackoffReady.Ongoing(); {
 		// Enforce a timeout on the command execution because we've seen some flaky tests
 		// stuck here.
 
@@ -526,20 +541,20 @@ func (d *dockerRunnable) waitForRunning() (err error) {
 			d.containerName(),
 		).CombinedOutput()
 		if err != nil {
-			d.waitBackoff.Wait()
+			d.waitBackoffReady.Wait()
 			continue
 		}
 
 		if out == nil {
 			err = errors.Errorf("nil output")
-			d.waitBackoff.Wait()
+			d.waitBackoffReady.Wait()
 			continue
 		}
 
 		str := strings.TrimSpace(string(out))
 		if str != "true" {
 			err = errors.Errorf("unexpected output: %q", str)
-			d.waitBackoff.Wait()
+			d.waitBackoffReady.Wait()
 			continue
 		}
 
@@ -552,18 +567,44 @@ func (d *dockerRunnable) waitForRunning() (err error) {
 	return errors.Wrapf(err, "docker container %s failed to start", d.Name())
 }
 
+func (d *dockerRunnable) waitForImageDownload() (err error) {
+	if !d.IsRunning() {
+		return errors.Errorf("service %s is stopped", d.Name())
+	}
+
+	for d.waitBackoffDownload.Reset(); d.waitBackoffDownload.Ongoing(); {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err = d.env.execContext(
+			ctx,
+			"docker",
+			"image",
+			"inspect",
+			d.opts.Image,
+		).CombinedOutput()
+		if err != nil {
+			d.waitBackoffDownload.Wait()
+			continue
+		}
+
+		return nil
+	}
+
+	return errors.Wrapf(err, "docker image %s failed to download", d.opts.Image)
+}
+
 func (d *dockerRunnable) WaitReady() (err error) {
 	if !d.IsRunning() {
 		return errors.Errorf("service %s is stopped", d.Name())
 	}
 
-	for d.waitBackoff.Reset(); d.waitBackoff.Ongoing(); {
+	for d.waitBackoffReady.Reset(); d.waitBackoffReady.Ongoing(); {
 		err = d.Ready()
 		if err == nil {
 			return nil
 		}
 
-		d.waitBackoff.Wait()
+		d.waitBackoffReady.Wait()
 	}
 	return errors.Wrapf(err, "the service %s is not ready", d.Name())
 }

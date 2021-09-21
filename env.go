@@ -70,11 +70,12 @@ type StartOptions struct {
 	Command   Command
 	Readiness ReadinessProbe
 	// WaitReadyBackofff represents backoff used for WaitReady.
-	WaitReadyBackoff *backoff.Config
-	Volumes          []string
-	UserNs           string
-	Privileged       bool
-	Capabilities     []RunnableCapabilities
+	WaitReadyBackoff    *backoff.Config
+	WaitDownloadBackoff *backoff.Config
+	Volumes             []string
+	UserNs              string
+	Privileged          bool
+	Capabilities        []RunnableCapabilities
 }
 
 type RunnableCapabilities string
