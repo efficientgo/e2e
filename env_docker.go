@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +25,8 @@ import (
 )
 
 const (
-	dockerLocalSharedDir = "/shared"
+	dockerLocalSharedDir   = "/shared"
+	dockerMacOSGatewayAddr = "gateway.docker.internal"
 )
 
 var (
@@ -91,29 +93,34 @@ func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnviro
 		return nil, errors.Wrapf(err, "create docker network '%s'", name)
 	}
 
-	out, err := d.exec("docker", "network", "inspect", name).CombinedOutput()
-	if err != nil {
-		e.logger.Log(string(out))
-		d.Close()
-		return nil, errors.Wrapf(err, "inspect docker network '%s'", name)
+	switch runtime.GOOS {
+	case "darwin":
+		d.hostAddr = dockerMacOSGatewayAddr
+	default:
+		out, err := d.exec("docker", "network", "inspect", name).CombinedOutput()
+		if err != nil {
+			e.logger.Log(string(out))
+			d.Close()
+			return nil, errors.Wrapf(err, "inspect docker network '%s'", name)
+		}
+
+		var inspectDetails []struct {
+			IPAM struct {
+				Config []struct {
+					Gateway string `json:"Gateway"`
+				} `json:"Config"`
+			} `json:"IPAM"`
+		}
+		if err := json.Unmarshal(out, &inspectDetails); err != nil {
+			return nil, errors.Wrap(err, "unmarshall docker inspect details to obtain Gateway IP")
+		}
+
+		if len(inspectDetails) != 1 || len(inspectDetails[0].IPAM.Config) != 1 {
+			return nil, errors.Errorf("unexpected format of docker inspect; expected exactly one element in root and IPAM.Config, got %v", string(out))
+		}
+		d.hostAddr = inspectDetails[0].IPAM.Config[0].Gateway
 	}
 
-	var inspectDetails []struct {
-		IPAM struct {
-			Config []struct {
-				Gateway string `json:"Gateway"`
-			} `json:"Config"`
-		} `json:"IPAM"`
-	}
-	if err := json.Unmarshal(out, &inspectDetails); err != nil {
-		return nil, errors.Wrap(err, "unmarshall docker inspect details to obtain Gateway IP")
-	}
-
-	if len(inspectDetails) != 1 || len(inspectDetails[0].IPAM.Config) != 1 {
-		return nil, errors.Errorf("unexpected format of docker inspect; expected exactly one element in root and IPAM.Config, got %v", string(out))
-	}
-
-	d.hostAddr = inspectDetails[0].IPAM.Config[0].Gateway
 	return d, nil
 }
 
