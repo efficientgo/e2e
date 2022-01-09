@@ -75,7 +75,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2e.In
 					"su - me -s /bin/sh -c 'mkdir -p %s && %s minio server --address :%v --quiet %v'",
 				userID, f.InternalDir(), f.InternalDir(), filepath.Join(f.InternalDir(), bktName), strings.Join(envVars, " "), ports[AccessPortName], f.InternalDir()),
 			),
-			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/minio/health/live", 200, 200),
+			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/minio/health/live", "", 200, 200),
 		},
 	)
 }
@@ -92,7 +92,7 @@ func NewConsul(env e2e.Environment, name string, opts ...Option) *e2e.Instrument
 			Image: o.image,
 			// Run consul in "dev" mode so that the initial leader election is immediate.
 			Command:   e2e.NewCommand("agent", "-server", "-client=0.0.0.0", "-dev", "-log-level=err"),
-			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/v1/operator/autopilot/health", 200, 200, `"Healthy": true`),
+			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/v1/operator/autopilot/health", "", 200, 200, `"Healthy": true`),
 		},
 	)
 }
@@ -108,7 +108,7 @@ func NewDynamoDB(env e2e.Environment, name string, opts ...Option) *e2e.Instrume
 			Image:   o.image,
 			Command: e2e.NewCommand("-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"),
 			// DynamoDB doesn't have a readiness probe, so we check if the / works even if returns 400
-			Readiness: e2e.NewHTTPReadinessProbe("http", "/", 400, 400),
+			Readiness: e2e.NewHTTPReadinessProbe("http", "/", "", 400, 400),
 		},
 	)
 }
@@ -150,7 +150,7 @@ func NewSwiftStorage(env e2e.Environment, name string, opts ...Option) *e2e.Inst
 	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 8080}, AccessPortName).Init(
 		e2e.StartOptions{
 			Image:     o.image,
-			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/", 404, 404),
+			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/", "", 404, 404),
 		},
 	)
 }
@@ -179,7 +179,7 @@ func NewETCD(env e2e.Environment, name string, opts ...Option) *e2e.Instrumented
 		e2e.StartOptions{
 			Image:     o.image,
 			Command:   e2e.NewCommand("/usr/local/bin/etcd", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://0.0.0.0:2379", "--listen-metrics-urls=http://0.0.0.0:9000", "--log-level=error"),
-			Readiness: e2e.NewHTTPReadinessProbe("metrics", "/health", 200, 204),
+			Readiness: e2e.NewHTTPReadinessProbe("metrics", "/health", "", 200, 204),
 		},
 	)
 }
