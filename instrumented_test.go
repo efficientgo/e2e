@@ -87,28 +87,28 @@ metric_b_summary_count 1
 	testutil.Ok(t, s.WaitSumMetrics(Equals(221), "metric_a"))
 
 	// No retry.
-	s.waitBackoff = backoff.New(context.Background(), backoff.Config{
+	noRetryWaitBackoff := backoff.Config{
 		Min:        0,
 		Max:        0,
 		MaxRetries: 1,
-	})
-	testutil.NotOk(t, s.WaitSumMetrics(Equals(16), "metric_a"))
+	}
+	testutil.NotOk(t, s.WaitSumMetricsWithOptions(Equals(16), []string{"metric_a"}, WithWaitBackoff(&noRetryWaitBackoff)))
 
-	testutil.Ok(t, s.WaitSumMetrics(Equals(1000), "metric_b"))
-	testutil.Ok(t, s.WaitSumMetrics(Equals(1020), "metric_b_counter"))
-	testutil.Ok(t, s.WaitSumMetrics(Equals(124), "metric_b_hist"))
-	testutil.Ok(t, s.WaitSumMetrics(Equals(22), "metric_b_summary"))
+	testutil.Ok(t, s.WaitSumMetricsWithOptions(Equals(1000), []string{"metric_b"}, WithWaitBackoff(&noRetryWaitBackoff)))
+	testutil.Ok(t, s.WaitSumMetricsWithOptions(Equals(1020), []string{"metric_b_counter"}, WithWaitBackoff(&noRetryWaitBackoff)))
+	testutil.Ok(t, s.WaitSumMetricsWithOptions(Equals(124), []string{"metric_b_hist"}, WithWaitBackoff(&noRetryWaitBackoff)))
+	testutil.Ok(t, s.WaitSumMetricsWithOptions(Equals(22), []string{"metric_b_summary"}, WithWaitBackoff(&noRetryWaitBackoff)))
 
-	testutil.Ok(t, s.WaitSumMetrics(EqualsAmongTwo, "metric_a", "metric_a"))
-	testutil.NotOk(t, s.WaitSumMetrics(EqualsAmongTwo, "metric_a", "metric_b"))
+	testutil.Ok(t, s.WaitSumMetricsWithOptions(EqualsAmongTwo, []string{"metric_a", "metric_a"}, WithWaitBackoff(&noRetryWaitBackoff)))
+	testutil.NotOk(t, s.WaitSumMetricsWithOptions(EqualsAmongTwo, []string{"metric_a", "metric_b"}, WithWaitBackoff(&noRetryWaitBackoff)))
 
-	testutil.Ok(t, s.WaitSumMetrics(GreaterAmongTwo, "metric_b", "metric_a"))
-	testutil.NotOk(t, s.WaitSumMetrics(GreaterAmongTwo, "metric_a", "metric_b"))
+	testutil.Ok(t, s.WaitSumMetricsWithOptions(GreaterAmongTwo, []string{"metric_b", "metric_a"}, WithWaitBackoff(&noRetryWaitBackoff)))
+	testutil.NotOk(t, s.WaitSumMetricsWithOptions(GreaterAmongTwo, []string{"metric_a", "metric_b"}, WithWaitBackoff(&noRetryWaitBackoff)))
 
-	testutil.Ok(t, s.WaitSumMetrics(LessAmongTwo, "metric_a", "metric_b"))
-	testutil.NotOk(t, s.WaitSumMetrics(LessAmongTwo, "metric_b", "metric_a"))
+	testutil.Ok(t, s.WaitSumMetricsWithOptions(LessAmongTwo, []string{"metric_a", "metric_b"}, WithWaitBackoff(&noRetryWaitBackoff)))
+	testutil.NotOk(t, s.WaitSumMetricsWithOptions(LessAmongTwo, []string{"metric_b", "metric_a"}, WithWaitBackoff(&noRetryWaitBackoff)))
 
-	testutil.NotOk(t, s.WaitSumMetrics(Equals(0), "non_existing_metric"))
+	testutil.NotOk(t, s.WaitSumMetricsWithOptions(Equals(0), []string{"non_existing_metric"}, WithWaitBackoff(&noRetryWaitBackoff)))
 }
 
 func TestWaitSumMetric_Nan(t *testing.T) {
