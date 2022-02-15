@@ -125,7 +125,8 @@ func (r *InstrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExp
 		options = buildMetricsOptions(opts)
 	)
 
-	for r.waitBackoff.Reset(); r.waitBackoff.Ongoing(); {
+	metricsWaitBackoff := backoff.New(context.Background(), *options.waitBackoff)
+	for metricsWaitBackoff.Reset(); metricsWaitBackoff.Ongoing(); {
 		sums, err = r.SumMetrics(metricNames, opts...)
 		if options.waitMissingMetrics && errors.Is(err, errMissingMetric) {
 			continue
@@ -138,9 +139,9 @@ func (r *InstrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExp
 			return nil
 		}
 
-		r.waitBackoff.Wait()
+		metricsWaitBackoff.Wait()
 	}
-	return errors.Errorf("unable to find metrics %s with expected values after %d retries. Last error: %v. Last values: %v", metricNames, r.waitBackoff.NumRetries(), err, sums)
+	return errors.Errorf("unable to find metrics %s with expected values after %d retries. Last error: %v. Last values: %v", metricNames, metricsWaitBackoff.NumRetries(), err, sums)
 }
 
 // SumMetrics returns the sum of the values of each given metric names.

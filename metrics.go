@@ -5,8 +5,10 @@ package e2e
 
 import (
 	"math"
+	"time"
 
 	"github.com/efficientgo/e2e/matchers"
+	"github.com/efficientgo/tools/core/pkg/backoff"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 
@@ -22,6 +24,14 @@ type metricsOptions struct {
 	labelMatchers      []*matchers.Matcher
 	waitMissingMetrics bool
 	skipMissingMetrics bool
+	waitBackoff        *backoff.Config
+}
+
+// WithWaitBackoff is an option to configure a backoff when waiting on a metric value.
+func WithWaitBackoff(backoffConfig *backoff.Config) MetricsOption {
+	return func(o *metricsOptions) {
+		o.waitBackoff = backoffConfig
+	}
 }
 
 // WithMetricCount is an option to get the histogram/summary count as metric value.
@@ -56,6 +66,11 @@ func SkipMissingMetrics() MetricsOption {
 func buildMetricsOptions(opts []MetricsOption) metricsOptions {
 	result := metricsOptions{
 		getValue: getMetricValue,
+		waitBackoff: &backoff.Config{
+			Min:        300 * time.Millisecond,
+			Max:        600 * time.Millisecond,
+			MaxRetries: 50,
+		},
 	}
 	for _, opt := range opts {
 		opt(&result)
