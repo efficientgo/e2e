@@ -47,6 +47,10 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
 
+      - name: Install Docker
+        if: runner.os == 'macOS'
+        uses: docker-practice/actions-setup-docker@master
+
       - uses: actions/cache@v1
         with:
           path: ~/go/pkg/mod

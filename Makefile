@@ -1,6 +1,6 @@
 include .bingo/Variables.mk
 
-MODULES ?= $(shell find $(PWD) -name "go.mod" | grep -v ".bingo" | xargs dirname)
+MODULES ?= $(shell find $(PWD) -name "go.mod" | grep -v ".bingo" | xargs -I {} dirname {})
 
 GO111MODULE       ?= on
 export GO111MODULE
