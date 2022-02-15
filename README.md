@@ -47,7 +47,6 @@ Let's go through an example leveraging `go test` flow:
    		Init(e2e.StartOptions{Image: "jaegertracing/all-in-one:1.25"})
    ```
 
-
 4. Program your scenario as you want. You can start, wait for their readiness, stop, check their metrics and use their network endpoints from both unit test (`Endpoint`) as well as within each workload (`InternalEndpoint`). You can also access workload directory. There is a shared directory across all workloads. Check `Dir` and `InternalDir` runnable methods.
 
    ```go mdox-exec="sed -n '28,86p' examples/thanos/unittest_test.go"
@@ -110,11 +109,10 @@ Let's go through an example leveraging `go test` flow:
    	}
    }
    ```
-   
+
 ### Interactive
 
-It is often the case we want to pause e2e test in desired moment so we can manually play with the scenario in progress. This is as easy as using `e2einteractive` package to pause the setup until you enter printed address
-in your browser. Use following code to pring address to hit and pause until it's getting hit.
+It is often the case we want to pause e2e test in desired moment so we can manually play with the scenario in progress. This is as easy as using `e2einteractive` package to pause the setup until you enter printed address in your browser. Use following code to pring address to hit and pause until it's getting hit.
 
 ```go
 err := e2einteractive.RunUntilEndpointHit()
@@ -173,10 +171,12 @@ If you see output like below:
 18:09:11 dockerEnv: [docker network create -d bridge kubelet]
 18:09:11 Error response from daemon: could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network
 ```
-First, consider pruning your docker networks, you might leftovers from previous runs (although in succesful runs, `e2e` cleans those).
 
-Use `docker system prune -f` to clean all, including old images.
+The first potential reasons is that this command often does not work if you have VPN client working like `openvpn`, `expresvpn`, `nordvpn` etc. Unfortunately the fastest solution is to turn off the VPN for the duration of test. Any other method is quite tedious and requires docker
 
+If that is not the reason, consider pruning your docker networks. You might have leftovers from previous runs (although in successful runs, `e2e` cleans those).
+
+Use `docker network prune -f` to clean those.
 
 ## Credits
 
