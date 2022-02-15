@@ -23,7 +23,18 @@ There are three main use cases envisioned for this Go module:
 
 Let's go through an example leveraging `go test` flow:
 
-1. Implement the workload by embedding`e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in [e2edb](db/) package. For example implementing function that schedules Jaeger with our desired configuration could look like this:
+1. Get `e2e` Go module to your `go.mod` using `go get github.com/efficientgo/e2e`.
+2. Implement test. Start by creating environment. Currently `e2e` supports Docker environment only. Use unique name for all your tests. It's recommended to keep it stable so resources are consistently cleaned.
+
+   ```go mdox-exec="sed -n '22,26p' examples/thanos/unittest_test.go"
+   	// Start isolated environment with given ref.
+   	e, err := e2e.NewDockerEnvironment("e2e_example")
+   	testutil.Ok(t, err)
+   	// Make sure resources (e.g docker containers, network, dir) are cleaned.
+   	t.Cleanup(e.Close)
+   ```
+
+3. Implement the workload by embedding`e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in [e2edb](db/) package. For example implementing function that schedules Jaeger with our desired configuration could look like this:
 
    ```go mdox-exec="sed -n '38,45p' examples/thanos/standalone.go"
    	// Setup Jaeger for example purposes, on how easy is to setup tracing pipeline in e2e framework.
@@ -36,17 +47,8 @@ Let's go through an example leveraging `go test` flow:
    		Init(e2e.StartOptions{Image: "jaegertracing/all-in-one:1.25"})
    ```
 
-2. Implement test. Start by creating environment. Currently `e2e` supports Docker environment only. Use unique name for all your tests. It's recommended to keep it stable so resources are consistently cleaned.
 
-   ```go mdox-exec="sed -n '22,26p' examples/thanos/unittest_test.go"
-   	// Start isolated environment with given ref.
-   	e, err := e2e.NewDockerEnvironment("e2e_example")
-   	testutil.Ok(t, err)
-   	// Make sure resources (e.g docker containers, network, dir) are cleaned.
-   	t.Cleanup(e.Close)
-   ```
-
-3. Program your scenario as you want. You can start, wait for their readiness, stop, check their metrics and use their network endpoints from both unit test (`Endpoint`) as well as within each workload (`InternalEndpoint`). You can also access workload directory. There is a shared directory across all workloads. Check `Dir` and `InternalDir` runnable methods.
+4. Program your scenario as you want. You can start, wait for their readiness, stop, check their metrics and use their network endpoints from both unit test (`Endpoint`) as well as within each workload (`InternalEndpoint`). You can also access workload directory. There is a shared directory across all workloads. Check `Dir` and `InternalDir` runnable methods.
 
    ```go mdox-exec="sed -n '28,86p' examples/thanos/unittest_test.go"
    	// Create structs for Prometheus containers scraping itself.
@@ -108,6 +110,15 @@ Let's go through an example leveraging `go test` flow:
    	}
    }
    ```
+   
+### Interactive
+
+It is often the case we want to pause e2e test in desired moment so we can manually play with the scenario in progress. This is as easy as using `e2einteractive` package to pause the setup until you enter printed address
+in your browser. Use following code to pring address to hit and pause until it's getting hit.
+
+```go
+err := e2einteractive.RunUntilEndpointHit()
+```
 
 ### Monitoring
 
@@ -115,9 +126,6 @@ Each instrumented workload have programmatic access to latest metrics with `Wait
 
 ```go
 mon, err := e2emonitoring.Start(e)
-if err != nil {
-	return err
-}
 ```
 
 This will start Prometheus with automatic discovery for every new and old instrumented runnables being scraped. It also runs cadvisor that monitors docker itself if `env.DockerEnvironment` is started and show generic performance metrics per container (e.g `container_memory_rss`). Run `OpenUserInterfaceInBrowser()` to open Prometheus UI in browser.
@@ -152,6 +160,23 @@ It's common pattern that you want to schedule some containers but also, you migh
 This will put current process in cgroup which allows cadvisor to watch it as it was container.
 
 > NOTE: This step requires manual step. The step is a command that is printed on first invocation of e2e with above command and should tell you what command should be invoked.
+
+### Troubleshooting
+
+#### Can't create docker network
+
+If you see output like below:
+
+```bash
+18:09:11 dockerEnv: [docker ps -a --quiet --filter network=kubelet]
+18:09:11 dockerEnv: [docker network ls --quiet --filter name=kubelet]
+18:09:11 dockerEnv: [docker network create -d bridge kubelet]
+18:09:11 Error response from daemon: could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network
+```
+First, consider pruning your docker networks, you might leftovers from previous runs (although in succesful runs, `e2e` cleans those).
+
+Use `docker system prune -f` to clean all, including old images.
+
 
 ## Credits
 
