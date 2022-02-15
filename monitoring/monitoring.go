@@ -198,8 +198,8 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	return &Service{p: p}, nil
 }
 
-func (s *Service) OpenUserInterfaceInBrowser() error {
-	return e2einteractive.OpenInBrowser("http://" + s.p.Endpoint(e2edb.AccessPortName))
+func (s *Service) OpenUserInterfaceInBrowser(paths ...string) error {
+	return e2einteractive.OpenInBrowser("http://" + s.p.Endpoint(e2edb.AccessPortName) + strings.Join(paths, "/"))
 }
 
 func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) *e2e.InstrumentedRunnable {
