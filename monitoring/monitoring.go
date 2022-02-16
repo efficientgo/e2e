@@ -49,7 +49,7 @@ func (l *listener) updateConfig(started map[string]instrumented) error {
 	add := func(name string, instr instrumented) {
 		scfg := &promconfig.ScrapeConfig{
 			JobName:                name,
-			ServiceDiscoveryConfig: sdconfig.ServiceDiscoveryConfig{StaticConfigs: []*targetgroup.Group{{}}},
+			ServiceDiscoveryConfig: sdconfig.ServiceDiscoveryConfig{},
 			HTTPClientConfig: config.HTTPClientConfig{
 				TLSConfig: config.TLSConfig{
 					// TODO(bwplotka): Allow providing certs?
@@ -60,11 +60,16 @@ func (l *listener) updateConfig(started map[string]instrumented) error {
 		}
 
 		for _, t := range instr.MetricTargets() {
-			scfg.ServiceDiscoveryConfig.StaticConfigs[0].Targets = append(scfg.ServiceDiscoveryConfig.StaticConfigs[0].Targets, map[model.LabelName]model.LabelValue{
-				model.AddressLabel:     model.LabelValue(t.InternalEndpoint),
-				model.SchemeLabel:      model.LabelValue(strings.ToLower(t.Scheme)),
-				model.MetricsPathLabel: model.LabelValue(t.MetricPath),
-			})
+			g := &targetgroup.Group{
+				Targets: []model.LabelSet{map[model.LabelName]model.LabelValue{
+					model.AddressLabel: model.LabelValue(t.InternalEndpoint),
+				}},
+				Labels: map[model.LabelName]model.LabelValue{
+					model.SchemeLabel:      model.LabelValue(strings.ToLower(t.Scheme)),
+					model.MetricsPathLabel: model.LabelValue(t.MetricPath),
+				},
+			}
+			scfg.ServiceDiscoveryConfig.StaticConfigs = append(scfg.ServiceDiscoveryConfig.StaticConfigs, g)
 		}
 		cfg.ScrapeConfigs = append(cfg.ScrapeConfigs, scfg)
 	}
