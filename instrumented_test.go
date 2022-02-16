@@ -71,12 +71,14 @@ metric_b_summary_count 1
 		_ = srv.Serve(ln)
 	}()
 
-	s := &InstrumentedRunnable{
+	r := &dockerRunnable{
+		hostPorts:       map[string]int{"http": port},
+		usedNetworkName: "hack",
+	}
+	s := &instrumentedRunnable{
 		metricPortName: "http",
-		Runnable: &dockerRunnable{
-			hostPorts:       map[string]int{"http": port},
-			usedNetworkName: "hack",
-		},
+		runnable:       r,
+		Linkable:       r,
 	}
 
 	s.waitBackoff = backoff.New(context.Background(), backoff.Config{
@@ -154,12 +156,14 @@ metric_b 1000
 		_ = srv.Serve(ln)
 	}()
 
-	s := &InstrumentedRunnable{
+	r := &dockerRunnable{
+		hostPorts:       map[string]int{"http": port},
+		usedNetworkName: "hack",
+	}
+	s := &instrumentedRunnable{
 		metricPortName: "http",
-		Runnable: &dockerRunnable{
-			hostPorts:       map[string]int{"http": port},
-			usedNetworkName: "hack",
-		},
+		runnable:       r,
+		Linkable:       r,
 	}
 
 	s.waitBackoff = backoff.New(context.Background(), backoff.Config{

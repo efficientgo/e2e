@@ -13,13 +13,13 @@ import (
 
 // CompositeInstrumentedRunnable abstract an higher-level service composed by more than one InstrumentedRunnable.
 type CompositeInstrumentedRunnable struct {
-	runnables []*InstrumentedRunnable
+	runnables []InstrumentedRunnable
 
 	// Generic retry backoff.
 	backoff *backoff.Backoff
 }
 
-func NewCompositeInstrumentedRunnable(runnables ...*InstrumentedRunnable) *CompositeInstrumentedRunnable {
+func NewCompositeInstrumentedRunnable(runnables ...InstrumentedRunnable) *CompositeInstrumentedRunnable {
 	return &CompositeInstrumentedRunnable{
 		runnables: runnables,
 		backoff: backoff.New(context.Background(), backoff.Config{
@@ -30,7 +30,7 @@ func NewCompositeInstrumentedRunnable(runnables ...*InstrumentedRunnable) *Compo
 	}
 }
 
-func (r *CompositeInstrumentedRunnable) Instances() []*InstrumentedRunnable {
+func (r *CompositeInstrumentedRunnable) Instances() []InstrumentedRunnable {
 	return r.runnables
 }
 
