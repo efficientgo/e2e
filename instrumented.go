@@ -67,7 +67,6 @@ type instrumentedRunnable struct {
 	name           string
 	metricPortName string
 	metricPath     string
-	ports          map[string]int
 
 	waitBackoff *backoff.Backoff
 }
@@ -85,7 +84,7 @@ func (r *instrumentedRunnable) WithPorts(ports map[string]int, instrumentedPortN
 		r.runnable = err
 		return r
 	}
-	r.ports = ports
+	r.builder.WithPorts(ports)
 	r.metricPortName = instrumentedPortName
 	return r
 }
@@ -101,7 +100,7 @@ func (r *instrumentedRunnable) Future() FutureInstrumentedRunnable {
 		return r
 	}
 
-	r.Linkable = r.builder.WithPorts(r.ports).Future()
+	r.Linkable = r.builder.Future()
 	return r
 }
 

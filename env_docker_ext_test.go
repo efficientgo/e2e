@@ -4,7 +4,6 @@
 package e2e_test
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
@@ -16,7 +15,6 @@ import (
 )
 
 func wgetFlagsCmd(hostPort string) e2e.Command {
-	fmt.Println("wget http://" + hostPort + "/api/v1/status/flags -O /tmp/flags && cat /tmp/flags")
 	return e2e.NewCommandWithoutEntrypoint("/bin/sh", "-c", "wget http://"+hostPort+"/api/v1/status/flags -O /tmp/flags && cat /tmp/flags")
 }
 
