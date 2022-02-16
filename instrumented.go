@@ -21,7 +21,8 @@ var errMissingMetric = errors.New("metric not found")
 
 type MetricTarget struct {
 	InternalEndpoint string
-	MetricPath       string
+	MetricPath       string // "/metrics" by default.
+	Scheme           string // "http" by default.
 }
 
 // InstrumentedRunnable represents opinionated microservice with one port marked as HTTP port with metric endpoint.
@@ -49,7 +50,11 @@ type InstrumentedRunnableBuilder interface {
 	// WithPorts adds ports to runnable, allowing caller to
 	// use `InternalEndpoint` and `Endpoint` methods by referencing port by name.
 	WithPorts(ports map[string]int, instrumentedPortName string) InstrumentedRunnableBuilder
+	// WithMetricPath allows adding customized metric path. "/metrics" by default.
 	WithMetricPath(path string) InstrumentedRunnableBuilder
+	// WithMetricScheme allows adding customized scheme. "http" or "https" values allowed. "http" by default.
+	// If "https" is specified, insecure TLS will be performed.
+	WithMetricScheme(scheme string) InstrumentedRunnableBuilder
 
 	// Future returns future runnable
 	Future() FutureInstrumentedRunnable
@@ -67,12 +72,13 @@ type instrumentedRunnable struct {
 	name           string
 	metricPortName string
 	metricPath     string
+	scheme         string
 
 	waitBackoff *backoff.Backoff
 }
 
 func NewInstrumentedRunnable(env Environment, name string) InstrumentedRunnableBuilder {
-	r := &instrumentedRunnable{name: name, metricPath: "/metrics", builder: env.Runnable(name)}
+	r := &instrumentedRunnable{name: name, scheme: "http", metricPath: "/metrics", builder: env.Runnable(name)}
 	r.builder.WithConcreteType(r)
 	return r
 }
@@ -91,6 +97,11 @@ func (r *instrumentedRunnable) WithPorts(ports map[string]int, instrumentedPortN
 
 func (r *instrumentedRunnable) WithMetricPath(path string) InstrumentedRunnableBuilder {
 	r.metricPath = path
+	return r
+}
+
+func (r *instrumentedRunnable) WithMetricScheme(scheme string) InstrumentedRunnableBuilder {
+	r.scheme = scheme
 	return r
 }
 
@@ -117,7 +128,7 @@ func (r *instrumentedRunnable) Init(opts StartOptions) InstrumentedRunnable {
 }
 
 func (r *instrumentedRunnable) MetricTargets() []MetricTarget {
-	return []MetricTarget{{MetricPath: r.metricPath, InternalEndpoint: r.InternalEndpoint(r.metricPortName)}}
+	return []MetricTarget{{Scheme: r.scheme, MetricPath: r.metricPath, InternalEndpoint: r.InternalEndpoint(r.metricPortName)}}
 }
 
 func (r *instrumentedRunnable) Metrics() (_ string, err error) {

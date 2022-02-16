@@ -74,10 +74,10 @@ func (r *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected Metri
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
-func (s *CompositeInstrumentedRunnable) SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error) {
+func (r *CompositeInstrumentedRunnable) SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error) {
 	sums := make([]float64, len(metricNames))
 
-	for _, service := range s.runnables {
+	for _, service := range r.runnables {
 		partials, err := service.SumMetrics(metricNames, opts...)
 		if err != nil {
 			return nil, err

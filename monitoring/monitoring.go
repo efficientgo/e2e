@@ -20,6 +20,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
@@ -45,21 +46,25 @@ func (l *listener) updateConfig(started map[string]instrumented) error {
 			ScrapeInterval: model.Duration(l.scrapeInterval),
 		},
 	}
-
 	add := func(name string, instr instrumented) {
 		scfg := &promconfig.ScrapeConfig{
 			JobName:                name,
 			ServiceDiscoveryConfig: sdconfig.ServiceDiscoveryConfig{StaticConfigs: []*targetgroup.Group{{}}},
+			HTTPClientConfig: config.HTTPClientConfig{
+				TLSConfig: config.TLSConfig{
+					// TODO(bwplotka): Allow providing certs?
+					// Allow insecure TLS. We are in benchmark/test that is focused on gathering data on all cost.
+					InsecureSkipVerify: true,
+				},
+			},
 		}
+
 		for _, t := range instr.MetricTargets() {
 			scfg.ServiceDiscoveryConfig.StaticConfigs[0].Targets = append(scfg.ServiceDiscoveryConfig.StaticConfigs[0].Targets, map[model.LabelName]model.LabelValue{
-				model.AddressLabel: model.LabelValue(t.InternalEndpoint),
+				model.AddressLabel:     model.LabelValue(t.InternalEndpoint),
+				model.SchemeLabel:      model.LabelValue(strings.ToLower(t.Scheme)),
+				model.MetricsPathLabel: model.LabelValue(t.MetricPath),
 			})
-
-			if t.MetricPath != "/metrics" {
-				// TODO(bwplotka) Add relabelling rule to change `__path__`.
-				panic("Different metrics endpoints are not implemented yet")
-			}
 		}
 		cfg.ScrapeConfigs = append(cfg.ScrapeConfigs, scfg)
 	}
