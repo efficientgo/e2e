@@ -21,77 +21,117 @@ var errMissingMetric = errors.New("metric not found")
 
 type MetricTarget struct {
 	InternalEndpoint string
-	MetricPath       string
+	MetricPath       string // "/metrics" by default.
+	Scheme           string // "http" by default.
 }
-
-// Instrumented is implemented by all instrumented runnables.
-type Instrumented interface {
-	MetricTargets() []MetricTarget
-}
-
-var _ Instrumented = &InstrumentedRunnable{}
 
 // InstrumentedRunnable represents opinionated microservice with one port marked as HTTP port with metric endpoint.
-type InstrumentedRunnable struct {
+type InstrumentedRunnable interface {
 	Runnable
+
+	MetricTargets() []MetricTarget
+	Metrics() (string, error)
+	WaitSumMetrics(expected MetricValueExpectation, metricNames ...string) error
+	WaitSumMetricsWithOptions(expected MetricValueExpectation, metricNames []string, opts ...MetricsOption) error
+	SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error)
+	WaitRemovedMetric(metricName string, opts ...MetricsOption) error
+}
+
+type FutureInstrumentedRunnable interface {
+	Linkable
+
+	// Init transforms future into runnable.
+	Init(opts StartOptions) InstrumentedRunnable
+}
+
+// InstrumentedRunnableBuilder represents options that can be build into runnable and if
+// you want Future or Initiated InstrumentedRunnableBuilder from it.
+type InstrumentedRunnableBuilder interface {
+	// WithPorts adds ports to runnable, allowing caller to
+	// use `InternalEndpoint` and `Endpoint` methods by referencing port by name.
+	WithPorts(ports map[string]int, instrumentedPortName string) InstrumentedRunnableBuilder
+	// WithMetricPath allows adding customized metric path. "/metrics" by default.
+	WithMetricPath(path string) InstrumentedRunnableBuilder
+	// WithMetricScheme allows adding customized scheme. "http" or "https" values allowed. "http" by default.
+	// If "https" is specified, insecure TLS will be performed.
+	WithMetricScheme(scheme string) InstrumentedRunnableBuilder
+
+	// Future returns future runnable
+	Future() FutureInstrumentedRunnable
+	// Init returns runnable.
+	Init(opts StartOptions) InstrumentedRunnable
+}
+
+var _ InstrumentedRunnable = &instrumentedRunnable{}
+
+type instrumentedRunnable struct {
+	runnable
+	Linkable
+	builder RunnableBuilder
 
 	name           string
 	metricPortName string
 	metricPath     string
-	ports          map[string]int
+	scheme         string
 
 	waitBackoff *backoff.Backoff
 }
 
-type FutureInstrumentedRunnable struct {
-	FutureRunnable
-
-	r *InstrumentedRunnable
+func NewInstrumentedRunnable(env Environment, name string) InstrumentedRunnableBuilder {
+	r := &instrumentedRunnable{name: name, scheme: "http", metricPath: "/metrics", builder: env.Runnable(name)}
+	r.builder.WithConcreteType(r)
+	return r
 }
 
-func NewInstrumentedRunnable(
-	env Environment,
-	name string,
-	ports map[string]int,
-	metricPortName string,
-) *FutureInstrumentedRunnable {
-	f := &FutureInstrumentedRunnable{
-		r: &InstrumentedRunnable{name: name, ports: ports, metricPortName: metricPortName, metricPath: "/metrics"},
+func (r *instrumentedRunnable) WithPorts(ports map[string]int, instrumentedPortName string) InstrumentedRunnableBuilder {
+	if _, ok := ports[instrumentedPortName]; !ok {
+		err := NewErrorer(r.name, errors.Errorf("metric port name %v does not exists in given ports", instrumentedPortName))
+		r.Linkable = err
+		r.runnable = err
+		return r
+	}
+	r.builder.WithPorts(ports)
+	r.metricPortName = instrumentedPortName
+	return r
+}
+
+func (r *instrumentedRunnable) WithMetricPath(path string) InstrumentedRunnableBuilder {
+	r.metricPath = path
+	return r
+}
+
+func (r *instrumentedRunnable) WithMetricScheme(scheme string) InstrumentedRunnableBuilder {
+	r.scheme = scheme
+	return r
+}
+
+func (r *instrumentedRunnable) Future() FutureInstrumentedRunnable {
+	if r.runnable != nil {
+		// Error.
+		return r
 	}
 
-	if _, ok := ports[metricPortName]; !ok {
-		f.FutureRunnable = NewErrorer(name, errors.Errorf("metric port name %v does not exists in given ports", metricPortName))
-		return f
-	}
-	f.FutureRunnable = env.Runnable(name).WithPorts(ports).WithConcreteType(f.r).Future()
-	return f
+	r.Linkable = r.builder.Future()
+	return r
 }
 
-func NewErrInstrumentedRunnable(name string, err error) *InstrumentedRunnable {
-	return &InstrumentedRunnable{
-		Runnable: NewErrorer(name, err),
-	}
-}
-
-func (r *FutureInstrumentedRunnable) Init(opts StartOptions) *InstrumentedRunnable {
-	if opts.WaitReadyBackoff == nil {
-		opts.WaitReadyBackoff = &backoff.Config{
-			Min:        300 * time.Millisecond,
-			Max:        600 * time.Millisecond,
-			MaxRetries: 50, // Sometimes the CI is slow ¯\_(ツ)_/¯.
-		}
+func (r *instrumentedRunnable) Init(opts StartOptions) InstrumentedRunnable {
+	if r.runnable != nil {
+		// Error.
+		return r
 	}
 
-	r.r.waitBackoff = backoff.New(context.Background(), *opts.WaitReadyBackoff)
-	r.r.Runnable = r.FutureRunnable.Init(opts)
-	return r.r
+	inner := r.builder.Init(opts)
+	r.Linkable = inner
+	r.runnable = inner
+	return r
 }
 
-func (r *InstrumentedRunnable) MetricTargets() []MetricTarget {
-	return []MetricTarget{{MetricPath: r.metricPath, InternalEndpoint: r.InternalEndpoint(r.metricPortName)}}
+func (r *instrumentedRunnable) MetricTargets() []MetricTarget {
+	return []MetricTarget{{Scheme: r.scheme, MetricPath: r.metricPath, InternalEndpoint: r.InternalEndpoint(r.metricPortName)}}
 }
 
-func (r *InstrumentedRunnable) Metrics() (_ string, err error) {
+func (r *instrumentedRunnable) Metrics() (_ string, err error) {
 	if !r.IsRunning() {
 		return "", errors.Errorf("%s is not running", r.Name())
 	}
@@ -114,11 +154,11 @@ func (r *InstrumentedRunnable) Metrics() (_ string, err error) {
 
 // WaitSumMetrics waits for at least one instance of each given metric names to be present and their sums,
 // returning true when passed to given expected(...).
-func (r *InstrumentedRunnable) WaitSumMetrics(expected MetricValueExpectation, metricNames ...string) error {
+func (r *instrumentedRunnable) WaitSumMetrics(expected MetricValueExpectation, metricNames ...string) error {
 	return r.WaitSumMetricsWithOptions(expected, metricNames)
 }
 
-func (r *InstrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExpectation, metricNames []string, opts ...MetricsOption) error {
+func (r *instrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExpectation, metricNames []string, opts ...MetricsOption) error {
 	var (
 		sums    []float64
 		err     error
@@ -145,7 +185,7 @@ func (r *InstrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExp
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
-func (r *InstrumentedRunnable) SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error) {
+func (r *instrumentedRunnable) SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error) {
 	options := buildMetricsOptions(opts)
 	sums := make([]float64, len(metricNames))
 
@@ -190,7 +230,7 @@ func (r *InstrumentedRunnable) SumMetrics(metricNames []string, opts ...MetricsO
 }
 
 // WaitRemovedMetric waits until a metric disappear from the list of metrics exported by the service.
-func (r *InstrumentedRunnable) WaitRemovedMetric(metricName string, opts ...MetricsOption) error {
+func (r *instrumentedRunnable) WaitRemovedMetric(metricName string, opts ...MetricsOption) error {
 	options := buildMetricsOptions(opts)
 
 	for r.waitBackoff.Reset(); r.waitBackoff.Ongoing(); {
@@ -222,4 +262,12 @@ func (r *InstrumentedRunnable) WaitRemovedMetric(metricName string, opts ...Metr
 	}
 
 	return errors.Errorf("the metric %s is still exported by %s", metricName, r.Name())
+}
+
+func NewErrInstrumentedRunnable(name string, err error) InstrumentedRunnable {
+	errr := NewErrorer(name, err)
+	return &instrumentedRunnable{
+		runnable: errr,
+		Linkable: errr,
+	}
 }

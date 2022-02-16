@@ -42,7 +42,7 @@ func WithFlagOverride(ov map[string]string) Option {
 const AccessPortName = "http"
 
 // NewMinio returns minio server, used as a local replacement for S3.
-func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2e.InstrumentedRunnable {
+func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) e2e.InstrumentedRunnable {
 	o := options{image: "minio/minio:RELEASE.2021-07-27T02-40-15Z"}
 	for _, opt := range opts {
 		opt(&o)
@@ -61,7 +61,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2e.In
 		"MINIO_KMS_KES_CERT_FILE=" + "root.cert",
 		"MINIO_KMS_KES_KEY_NAME=" + "my-minio-key",
 	}
-	f := e2e.NewInstrumentedRunnable(env, name, ports, AccessPortName)
+	f := e2e.NewInstrumentedRunnable(env, name).WithPorts(ports, AccessPortName).Future()
 	return f.Init(
 		e2e.StartOptions{
 			Image: o.image,
@@ -80,14 +80,14 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2e.In
 	)
 }
 
-func NewConsul(env e2e.Environment, name string, opts ...Option) *e2e.InstrumentedRunnable {
+func NewConsul(env e2e.Environment, name string, opts ...Option) e2e.InstrumentedRunnable {
 	o := options{image: "consul:1.8.4"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
 	e2e.MergeFlags()
-	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 8500}, AccessPortName).Init(
+	return e2e.NewInstrumentedRunnable(env, name).WithPorts(map[string]int{AccessPortName: 8500}, AccessPortName).Init(
 		e2e.StartOptions{
 			Image: o.image,
 			// Run consul in "dev" mode so that the initial leader election is immediate.
@@ -97,13 +97,13 @@ func NewConsul(env e2e.Environment, name string, opts ...Option) *e2e.Instrument
 	)
 }
 
-func NewDynamoDB(env e2e.Environment, name string, opts ...Option) *e2e.InstrumentedRunnable {
+func NewDynamoDB(env e2e.Environment, name string, opts ...Option) e2e.InstrumentedRunnable {
 	o := options{image: "amazon/dynamodb-local:1.11.477"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 8000}, AccessPortName).Init(
+	return e2e.NewInstrumentedRunnable(env, name).WithPorts(map[string]int{AccessPortName: 8000}, AccessPortName).Init(
 		e2e.StartOptions{
 			Image:   o.image,
 			Command: e2e.NewCommand("-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"),
@@ -113,26 +113,26 @@ func NewDynamoDB(env e2e.Environment, name string, opts ...Option) *e2e.Instrume
 	)
 }
 
-func NewBigtable(env e2e.Environment, name string, opts ...Option) *e2e.InstrumentedRunnable {
+func NewBigtable(env e2e.Environment, name string, opts ...Option) e2e.Runnable {
 	o := options{image: "shopify/bigtable-emulator:0.1.0"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(env, name, nil, AccessPortName).Init(
+	return e2e.NewInstrumentedRunnable(env, name).Init(
 		e2e.StartOptions{
 			Image: o.image,
 		},
 	)
 }
 
-func NewCassandra(env e2e.Environment, name string, opts ...Option) *e2e.InstrumentedRunnable {
+func NewCassandra(env e2e.Environment, name string, opts ...Option) e2e.InstrumentedRunnable {
 	o := options{image: "rinscy/cassandra:3.11.0"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 9042}, AccessPortName).Init(
+	return e2e.NewInstrumentedRunnable(env, name).WithPorts(map[string]int{AccessPortName: 9042}, AccessPortName).Init(
 		e2e.StartOptions{
 			Image: o.image,
 			// Readiness probe inspired from https://github.com/kubernetes/examples/blob/b86c9d50be45eaf5ce74dee7159ce38b0e149d38/cassandra/image/files/ready-probe.sh
@@ -141,13 +141,13 @@ func NewCassandra(env e2e.Environment, name string, opts ...Option) *e2e.Instrum
 	)
 }
 
-func NewSwiftStorage(env e2e.Environment, name string, opts ...Option) *e2e.InstrumentedRunnable {
+func NewSwiftStorage(env e2e.Environment, name string, opts ...Option) e2e.InstrumentedRunnable {
 	o := options{image: "bouncestorage/swift-aio:55ba4331"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 8080}, AccessPortName).Init(
+	return e2e.NewInstrumentedRunnable(env, name).WithPorts(map[string]int{AccessPortName: 8080}, AccessPortName).Init(
 		e2e.StartOptions{
 			Image:     o.image,
 			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/", 404, 404),
@@ -169,13 +169,13 @@ func NewMemcached(env e2e.Environment, name string, opts ...Option) e2e.Runnable
 	)
 }
 
-func NewETCD(env e2e.Environment, name string, opts ...Option) *e2e.InstrumentedRunnable {
+func NewETCD(env e2e.Environment, name string, opts ...Option) e2e.InstrumentedRunnable {
 	o := options{image: "gcr.io/etcd-development/etcd:v3.4.7"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2e.NewInstrumentedRunnable(env, name, map[string]int{AccessPortName: 2379, "metrics": 9000}, "metrics").Init(
+	return e2e.NewInstrumentedRunnable(env, name).WithPorts(map[string]int{AccessPortName: 2379, "metrics": 9000}, "metrics").Init(
 		e2e.StartOptions{
 			Image:     o.image,
 			Command:   e2e.NewCommand("/usr/local/bin/etcd", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://0.0.0.0:2379", "--listen-metrics-urls=http://0.0.0.0:9000", "--log-level=error"),

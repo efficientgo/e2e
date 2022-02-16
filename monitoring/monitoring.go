@@ -20,6 +20,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
@@ -36,7 +37,7 @@ type listener struct {
 	scrapeInterval time.Duration
 }
 
-func (l *listener) updateConfig(started map[string]e2e.Instrumented) error {
+func (l *listener) updateConfig(started map[string]instrumented) error {
 	// TODO(bwplotka): Scrape our process metrics too?
 
 	cfg := promconfig.Config{
@@ -45,21 +46,30 @@ func (l *listener) updateConfig(started map[string]e2e.Instrumented) error {
 			ScrapeInterval: model.Duration(l.scrapeInterval),
 		},
 	}
-
-	add := func(name string, instr e2e.Instrumented) {
+	add := func(name string, instr instrumented) {
 		scfg := &promconfig.ScrapeConfig{
 			JobName:                name,
-			ServiceDiscoveryConfig: sdconfig.ServiceDiscoveryConfig{StaticConfigs: []*targetgroup.Group{{}}},
+			ServiceDiscoveryConfig: sdconfig.ServiceDiscoveryConfig{},
+			HTTPClientConfig: config.HTTPClientConfig{
+				TLSConfig: config.TLSConfig{
+					// TODO(bwplotka): Allow providing certs?
+					// Allow insecure TLS. We are in benchmark/test that is focused on gathering data on all cost.
+					InsecureSkipVerify: true,
+				},
+			},
 		}
-		for _, t := range instr.MetricTargets() {
-			scfg.ServiceDiscoveryConfig.StaticConfigs[0].Targets = append(scfg.ServiceDiscoveryConfig.StaticConfigs[0].Targets, map[model.LabelName]model.LabelValue{
-				model.AddressLabel: model.LabelValue(t.InternalEndpoint),
-			})
 
-			if t.MetricPath != "/metrics" {
-				// TODO(bwplotka) Add relabelling rule to change `__path__`.
-				panic("Different metrics endpoints are not implemented yet")
+		for _, t := range instr.MetricTargets() {
+			g := &targetgroup.Group{
+				Targets: []model.LabelSet{map[model.LabelName]model.LabelValue{
+					model.AddressLabel: model.LabelValue(t.InternalEndpoint),
+				}},
+				Labels: map[model.LabelName]model.LabelValue{
+					model.SchemeLabel:      model.LabelValue(strings.ToLower(t.Scheme)),
+					model.MetricsPathLabel: model.LabelValue(t.MetricPath),
+				},
 			}
+			scfg.ServiceDiscoveryConfig.StaticConfigs = append(scfg.ServiceDiscoveryConfig.StaticConfigs, g)
 		}
 		cfg.ScrapeConfigs = append(cfg.ScrapeConfigs, scfg)
 	}
@@ -89,10 +99,14 @@ func (l *listener) updateConfig(started map[string]e2e.Instrumented) error {
 	return l.p.SetConfig(string(o))
 }
 
+type instrumented interface {
+	MetricTargets() []e2e.MetricTarget
+}
+
 func (l *listener) OnRunnableChange(started []e2e.Runnable) error {
-	s := map[string]e2e.Instrumented{}
+	s := map[string]instrumented{}
 	for _, r := range started {
-		instr, ok := r.(e2e.Instrumented)
+		instr, ok := r.(instrumented)
 		if !ok {
 			continue
 		}
@@ -167,7 +181,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 		return nil, err
 	}
 	l := &listener{p: p, localAddr: net.JoinHostPort(env.HostAddr(), port), scrapeInterval: opt.scrapeInterval}
-	if err := l.updateConfig(map[string]e2e.Instrumented{}); err != nil {
+	if err := l.updateConfig(map[string]instrumented{}); err != nil {
 		return nil, err
 	}
 	env.AddListener(l)
@@ -202,8 +216,8 @@ func (s *Service) OpenUserInterfaceInBrowser(paths ...string) error {
 	return e2einteractive.OpenInBrowser("http://" + s.p.Endpoint(e2edb.AccessPortName) + strings.Join(paths, "/"))
 }
 
-func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) *e2e.InstrumentedRunnable {
-	return e2e.NewInstrumentedRunnable(env, name, map[string]int{"http": 8080}, "http").Init(e2e.StartOptions{
+func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) e2e.InstrumentedRunnable {
+	return e2e.NewInstrumentedRunnable(env, name).WithPorts(map[string]int{"http": 8080}, "http").Init(e2e.StartOptions{
 		// See https://github.com/google/cadvisor/blob/master/docs/runtime_options.md.
 		Command: e2e.NewCommand(
 			// TODO(bwplotka): Add option to scope to dockers only from this network.
