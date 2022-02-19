@@ -19,10 +19,10 @@ import (
 	"github.com/efficientgo/e2e/monitoring/promconfig/discovery/targetgroup"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
 )
 
@@ -150,9 +150,8 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	// Expose metrics from the current process.
 	metrics := prometheus.NewRegistry()
 	metrics.MustRegister(
-		version.NewCollector("thanos"),
-		prometheus.NewGoCollector(),
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 
 	m := http.NewServeMux()
