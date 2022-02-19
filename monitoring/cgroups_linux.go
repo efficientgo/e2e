@@ -29,7 +29,7 @@ func setupPIDAsContainer(env e2e.Environment, pid int) ([]string, error) {
 		c, err := cgroups.New(cgroups.V1, cgroups.StaticPath(filepath.Join(cgroupSubGroup, "__test__")), &specs.LinuxResources{})
 		if err != nil {
 			if !os.IsPermission(err) {
-				return nil, err
+				return nil, errors.Wrap(err, "new test cgroup")
 			}
 
 			uid := os.Getuid()
@@ -38,7 +38,7 @@ func setupPIDAsContainer(env e2e.Environment, pid int) ([]string, error) {
 
 			ss, cerr := cgroups.V1()
 			if cerr != nil {
-				return nil, cerr
+				return nil, errors.Wrap(cerr, "access v1 test")
 			}
 
 			for _, s := range ss {
@@ -51,14 +51,14 @@ func setupPIDAsContainer(env e2e.Environment, pid int) ([]string, error) {
 			return nil, errors.Errorf("e2e does not have permissions, run following command: %q; err: %v", strings.Join(cmds, " && "), err)
 		}
 		if err := c.Delete(); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "delete test")
 		}
 	}
 
 	// Delete previous cgroup if it exists.
 	root, err := cgroups.Load(cgroups.V1, cgroups.RootPath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "load root")
 	}
 
 	l, err := cgroups.Load(cgroups.V1, cgroups.StaticPath(filepath.Join(cgroupSubGroup, env.Name())))

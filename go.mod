@@ -3,7 +3,7 @@ module github.com/efficientgo/e2e
 go 1.15
 
 require (
-	github.com/containerd/cgroups v1.0.1
+	github.com/containerd/cgroups v1.0.4-0.20220219004815-79a7cc6b4011
 	github.com/efficientgo/tools/core v0.0.0-20210129205121-421d0828c9a6
 	github.com/opencontainers/runtime-spec v1.0.2
 	github.com/pkg/errors v0.9.1

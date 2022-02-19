@@ -190,7 +190,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 		// Do cgroup magic allowing us to monitor current PID as container.
 		path, err = setupPIDAsContainer(env, os.Getpid())
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "add relevant cgroups for PID to mimic container")
 		}
 	}
 
