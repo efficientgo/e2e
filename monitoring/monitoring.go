@@ -180,24 +180,26 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	env.AddListener(l)
 
 	var path []string
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "linux" {
 		pid := os.Getpid()
 		b, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
 		if err != nil {
 			return nil, err
 		}
-		if b != nil {
-			// if present, this file is in format of "0::<path>"
-			path = append(path, string(b[3:]))
+		if b == nil {
+			return nil, errors.Errorf("no cgroup for %d PID", pid)
+		}
+		// if present, this file is in format of "0::<path>\n"
+		cgroup := string(b[3 : len(b)-1])
+		path, err = setupPIDAsContainer(env, cgroup, pid)
+		if err != nil {
+			return nil, err
 		}
 	}
 
+	fmt.Println(path)
 	c := newCadvisor(env, "cadvisor", path...)
-	if err := e2e.StartAndWaitReady(c); err != nil {
-		return nil, err
-	}
-
-	if err := e2e.StartAndWaitReady(p); err != nil {
+	if err := e2e.StartAndWaitReady(c, p); err != nil {
 		return nil, err
 	}
 
