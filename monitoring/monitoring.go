@@ -116,8 +116,7 @@ func (l *listener) OnRunnableChange(started []e2e.Runnable) error {
 }
 
 type opt struct {
-	currentProcessAsContainer bool
-	scrapeInterval            time.Duration
+	scrapeInterval time.Duration
 }
 
 // WithScrapeInterval changes how often metrics are scrape by Prometheus. 5s by default.
