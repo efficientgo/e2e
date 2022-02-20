@@ -4,10 +4,12 @@
 package e2emonitoring
 
 import (
+	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -122,15 +124,6 @@ type opt struct {
 	scrapeInterval            time.Duration
 }
 
-// WithCurrentProcessAsContainer makes Start put current process PID into cgroups and organize
-// them in a way that makes cadvisor to watch those as it would be any other container.
-// NOTE: This option requires a manual on-off per machine/restart setup that will be printed on first start (permissions).
-func WithCurrentProcessAsContainer() func(*opt) {
-	return func(o *opt) {
-		o.currentProcessAsContainer = true
-	}
-}
-
 // WithScrapeInterval changes how often metrics are scrape by Prometheus. 5s by default.
 func WithScrapeInterval(interval time.Duration) func(*opt) {
 	return func(o *opt) {
@@ -186,16 +179,22 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	}
 	env.AddListener(l)
 
-	c := newCadvisor(env, "cadvisor", filepath.Join("/", cgroupSubGroup, env.Name()))
-	if err := e2e.StartAndWaitReady(c); err != nil {
-		return nil, err
+	var path []string
+	if runtime.GOOS == "darwin" {
+		pid := os.Getpid()
+		b, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
+		if err != nil {
+			return nil, err
+		}
+		if b != nil {
+			// if present, this file is in format of "0::<path>"
+			path = append(path, string(b[3:]))
+		}
 	}
 
-	if opt.currentProcessAsContainer {
-		// Do cgroup magic allowing us to monitor current PID as container.
-		if err = setupPIDAsContainer(env, c, os.Getpid()); err != nil {
-			return nil, errors.Wrap(err, "add relevant cgroups for PID to mimic container")
-		}
+	c := newCadvisor(env, "cadvisor", path...)
+	if err := e2e.StartAndWaitReady(c); err != nil {
+		return nil, err
 	}
 
 	if err := e2e.StartAndWaitReady(p); err != nil {
@@ -223,7 +222,7 @@ func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) e2e
 			"--docker_only=true",
 			"--raw_cgroup_prefix_whitelist="+strings.Join(cgroupPrefixes, ","),
 		),
-		Image: "gcr.io/cadvisor/cadvisor:v0.37.5",
+		Image: "gcr.io/cadvisor/cadvisor:v0.39.3",
 		// See https://github.com/google/cadvisor/blob/master/docs/running.md.
 		Volumes: []string{
 			"/:/rootfs:ro",
