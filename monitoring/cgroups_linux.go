@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
-	cgroups "github.com/containerd/cgroups/v2"
 	"github.com/efficientgo/e2e"
 	"github.com/pkg/errors"
 )
@@ -48,69 +48,33 @@ func v2MountPoint() (string, error) {
 	return "", errors.New("mountpoint does exists")
 }
 
-func setupPIDAsContainer(env e2e.Environment, pid int) ([]string, error) {
+func setupPIDAsContainer(env e2e.Environment, cadvisorRunnable e2e.Runnable, pid int) error {
 	mountpoint, err := v2MountPoint()
 	if err != nil {
-		return nil, errors.Wrap(err, "find v2 mountpoint")
+		return errors.Wrap(err, "find v2 mountpoint")
 	}
 
-	// Try to create test cgroup to check if we have permission.
-	{
-		mgr, err := cgroups.NewManager(mountpoint, "/"+filepath.Join(cgroupSubGroup, "__test__"), &cgroups.Resources{})
-		if err != nil {
-			if !os.IsPermission(err) {
-				return nil, errors.Wrap(err, "new test cgroup")
-			}
+	// Create new nested cgroup and add process to it.
+	cmd := fmt.Sprintf("mkdir -p %v && echo %d > %v/cgroup.procs", filepath.Join(mountpoint, cgroupSubGroup, env.Name()), pid, filepath.Join(mountpoint, cgroupSubGroup, env.Name()))
 
-			uid := os.Getuid()
-			cmds := fmt.Sprintf("sudo mkdir -p %s && sudo chown -R %d %s",
-				filepath.Join(mountpoint, cgroupSubGroup),
-				uid,
-				filepath.Join(mountpoint, cgroupSubGroup),
-			)
-			return nil, errors.Errorf("e2e does not have permissions, run following command: %q; err: %v", cmds, err)
-		}
-		if err := mgr.Delete(); err != nil {
-			return nil, errors.Wrap(err, "delete test")
-		}
-	}
-
-	// Delete previous cgroup if it exists.
-	mgr, err := cgroups.LoadManager(mountpoint, "/"+filepath.Join(cgroupSubGroup, env.Name()))
+	stdout, stderr, err := cadvisorRunnable.Exec(e2e.NewCommand("sh", "-c", "echo lol"))
 	if err != nil {
-		// Deleted?
-		return nil, errors.Wrap(err, "load cgroup")
-	} else {
-		if err := mgr.Freeze(); err != nil {
-			return nil, errors.Wrap(err, "freeze")
-		}
-		if err := mgr.Delete(); err != nil {
-			return nil, errors.Wrap(err, "delete")
-		}
+		return errors.Wrapf(err, "exec: stdout %v; stderr %v", stdout, stderr)
 	}
 
-	// Create cgroup that will contain our process.
-	mgr, err = cgroups.NewManager(mountpoint, "/"+filepath.Join(cgroupSubGroup, env.Name()), &cgroups.Resources{})
+	// Execute it through cadvisor container which has to have all necessary permissions.
+	stdout, stderr, err = cadvisorRunnable.Exec(e2e.NewCommand("sh", "-c", strconv.Quote(cmd)))
 	if err != nil {
-		return nil, errors.Wrap(err, "new v2 manager")
-	}
-
-	if err := mgr.AddProc(uint64(pid)); err != nil {
-		return nil, errors.Wrap(err, "add proc")
+		return errors.Wrapf(err, "exec: stdout %v; stderr %v", stdout, stderr)
 	}
 
 	env.AddCloser(func() {
-		mgr, err := cgroups.LoadManager(mountpoint, "/"+filepath.Join(cgroupSubGroup, env.Name()))
+		cmd := fmt.Sprintf("echo %d > %v/cgroup.procs && rmdir %v", pid, filepath.Join(mountpoint, cgroupSubGroup), filepath.Join(mountpoint, cgroupSubGroup, env.Name()))
+		stdout, stderr, err := cadvisorRunnable.Exec(e2e.NewCommand("sh", fmt.Sprintf("-c=%v", strconv.Quote(cmd))))
 		if err != nil {
-			// Deleted?
-			fmt.Println("Failed to load cgroup", err)
-			return
-		}
-		if err := mgr.Delete(); err != nil {
-			// TODO(bwplotka): This never works, but not very important, fix it.
-			fmt.Println("Failed to delete cgroup", err)
+			fmt.Println(errors.Wrapf(err, "closer exec: stdout %v; stderr %v", stdout, stderr)) // Best effort.
 		}
 	})
 
-	return []string{filepath.Join("/", cgroupSubGroup, env.Name())}, nil
+	return nil
 }

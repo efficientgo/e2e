@@ -11,6 +11,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-func setupPIDAsContainer(env e2e.Environment, pid int) ([]string, error) {
-	return nil, errors.New("not implemented")
+func setupPIDAsContainer(_ e2e.Environment, _ e2e.Runnable, _ int) error {
+	return nil, errors.New("not implemented for non Linux system")
 }

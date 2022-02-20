@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -185,17 +186,16 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	}
 	env.AddListener(l)
 
-	var path []string
-	if opt.currentProcessAsContainer {
-		// Do cgroup magic allowing us to monitor current PID as container.
-		path, err = setupPIDAsContainer(env, os.Getpid())
-		if err != nil {
-			return nil, errors.Wrap(err, "add relevant cgroups for PID to mimic container")
-		}
+	c := newCadvisor(env, "cadvisor", filepath.Join("/", cgroupSubGroup, env.Name()))
+	if err := e2e.StartAndWaitReady(c); err != nil {
+		return nil, err
 	}
 
-	if err := newCadvisor(env, "cadvisor", path...).Start(); err != nil {
-		return nil, err
+	if opt.currentProcessAsContainer {
+		// Do cgroup magic allowing us to monitor current PID as container.
+		if err = setupPIDAsContainer(env, c, os.Getpid()); err != nil {
+			return nil, errors.Wrap(err, "add relevant cgroups for PID to mimic container")
+		}
 	}
 
 	if err := e2e.StartAndWaitReady(p); err != nil {
