@@ -27,10 +27,7 @@ func deployWithMonitoring(ctx context.Context) error {
 	// Make sure resources (e.g docker containers, network, dir) are cleaned.
 	defer e.Close()
 
-	// NOTE: This will error out on first run, demanding to setup permissions for cgroups.
-	// Remove `WithCurrentProcessAsContainer` to avoid that. This will also descope monitoring current process itself
-	// and focus on scheduled containers only.
-	mon, err := e2emonitoring.Start(e, e2emonitoring.WithCurrentProcessAsContainer())
+	mon, err := e2emonitoring.Start(e)
 	if err != nil {
 		return err
 	}
