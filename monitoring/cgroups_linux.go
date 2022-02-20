@@ -51,27 +51,38 @@ func setupPIDAsContainer(env e2e.Environment, currCgroup string, pid int) ([]str
 		return nil, errors.Wrap(err, "find v2 mountpoint")
 	}
 
+	fmt.Println(os.Getuid())
 	// TODO(bwplotka): Make sure multiple runners would work.
-	subCgroup := filepath.Join(mountpoint, currCgroup, cgroupSubGroup)
-	if err := os.MkdirAll(subCgroup, os.ModePerm); err != nil {
+	if err := os.MkdirAll(filepath.Join(mountpoint, cgroupSubGroup, env.Name()), os.ModePerm); err != nil {
+		if !os.IsPermission(err) {
+			return nil, err
+		}
+
+		// sudo mkdir /sys/fs/cgroup/e2e && sudo chown -R 1000 /sys/fs/cgroup/e2e
+		fmt.Println("perms")
 		return nil, err
-	}
-	if err := ioutil.WriteFile(filepath.Join(subCgroup, "cgroup.procs"), []byte(fmt.Sprintf("%v", pid)), os.ModeAppend); err != nil {
-		return nil, err
+
 	}
 	// Enable controllers, see https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html
-	if err := ioutil.WriteFile(filepath.Join(mountpoint, currCgroup, "cgroup.subtree_control"), []byte("+memory"), os.ModeAppend); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(mountpoint, cgroupSubGroup, "cgroup.subtree_control"), []byte("+cpu +memory"), os.ModeAppend); err != nil {
 		return nil, err
 	}
+	fmt.Println("PUD", pid)
+	//if err := ioutil.WriteFile(filepath.Join(mountpoint, cgroupSubGroup, "cgroup.procs"), []byte(fmt.Sprintf("%v", pid)), os.ModeAppend); err != nil {
+	//	return nil, err
+	//}
+	//if err := ioutil.WriteFile(filepath.Join(mountpoint, cgroupSubGroup, env.Name(), "cgroup.procs"), []byte(fmt.Sprintf("%v", pid)), os.ModeAppend); err != nil {
+	//	return nil, err
+	//}
 
 	env.AddCloser(func() {
 		if err := ioutil.WriteFile(filepath.Join(mountpoint, currCgroup, "cgroup.procs"), []byte(fmt.Sprintf("%v", pid)), os.ModeAppend); err != nil {
 			fmt.Println(err) // Best effort.
 		}
-		if err := os.RemoveAll(filepath.Join(mountpoint, currCgroup, cgroupSubGroup)); err != nil {
+		if err := os.RemoveAll(filepath.Join(mountpoint, cgroupSubGroup, env.Name())); err != nil {
 			fmt.Println(err) // Best effort.
 		}
 	})
 
-	return []string{filepath.Join(currCgroup, cgroupSubGroup)}, nil
+	return []string{filepath.Join(cgroupSubGroup, env.Name())}, nil
 }
