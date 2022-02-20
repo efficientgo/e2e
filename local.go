@@ -27,10 +27,16 @@ func Containerize(e Environment, name string, startFn func(context.Context) erro
 		return nil, err
 	}
 
-	modulePath := wd
-	for len(modulePath) > 0 {
-		_, err := os.Stat(filepath.Join(modulePath, "go.mod"))
+	strs := strings.Split(runtime.FuncForPC(reflect.ValueOf(startFn).Pointer()).Name(), ".")
+	funcName := strs[len(strs)-1]
+	pkg := strings.Join(strs[:len(strs)-1], ".")
+
+	modulePath := pkg
+	absModulePath := wd
+	for len(absModulePath) > 0 {
+		_, err := os.Stat(filepath.Join(absModulePath, "go.mod"))
 		if os.IsNotExist(err) {
+			absModulePath = filepath.Dir(absModulePath)
 			modulePath = filepath.Dir(modulePath)
 			continue
 		}
@@ -40,12 +46,9 @@ func Containerize(e Environment, name string, startFn func(context.Context) erro
 		return nil, err
 	}
 
-	if len(modulePath) == 0 {
+	if len(absModulePath) == 0 {
 		return nil, errors.Errorf("not a Go module %v", wd)
 	}
-
-	strs := strings.Split(runtime.FuncForPC(reflect.ValueOf(startFn).Pointer()).Name(), ".")
-	funcName := strs[:len(strs)-1]
 
 	f := NewInstrumentedRunnable(e, name).WithPorts(map[string]int{"http": 80}, "http").Future()
 	dir := filepath.Join(f.Dir(), "shim")
@@ -53,10 +56,10 @@ func Containerize(e Environment, name string, startFn func(context.Context) erro
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return nil, err
 	}
-	if err := ioutil.WriteFile(filepath.Join(dir, "go.mod"), []byte(fmt.Sprintf(goModTmpl, modulePath)), os.ModePerm); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(dir, "go.mod"), []byte(fmt.Sprintf(goModTmpl, modulePath, modulePath, absModulePath)), os.ModePerm); err != nil {
 		return nil, err
 	}
-	if err := ioutil.WriteFile(filepath.Join(dir, "main.go"), []byte(fmt.Sprintf(mainFileTmpl, funcName)), os.ModePerm); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(dir, "main.go"), []byte(fmt.Sprintf(mainFileTmpl, pkg, funcName)), os.ModePerm); err != nil {
 		return nil, err
 	}
 	if err := ioutil.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(dockerFile), os.ModePerm); err != nil {
@@ -65,21 +68,21 @@ func Containerize(e Environment, name string, startFn func(context.Context) erro
 
 	cmd := de.exec("go", "mod", "tidy")
 	cmd.Dir = dir
-	if err := cmd.Run(); err != nil {
-		return nil, err
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return nil, errors.Wrap(err, string(out))
 	}
 
 	cmd = de.exec("go", "build", "-o", "exe", "main.go")
 	cmd.Dir = dir
-	if err := cmd.Run(); err != nil {
-		return nil, err
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return nil, errors.Wrap(err, string(out))
 	}
 
 	imageTag := fmt.Sprintf("e2e-local-%v:dynamic", name)
 	cmd = de.exec("docker", "build", "-t", imageTag, ".")
 	cmd.Dir = dir
-	if err := cmd.Run(); err != nil {
-		return nil, err
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return nil, errors.Wrap(err, string(out))
 	}
 	return f.Init(StartOptions{Image: imageTag}), nil
 }
@@ -95,14 +98,13 @@ ENTRYPOINT [ "/bin/exe" ]`
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"sync"
 
-	local "local"
+	local "%v"
 
 	"github.com/oklog/run"
 	"github.com/prometheus/client_golang/prometheus"
@@ -166,6 +168,7 @@ go 1.17
 require (
 	github.com/oklog/run v1.1.0
 	github.com/prometheus/client_golang v1.12.1
+	%v v1.0.0
 )
 
 require (
@@ -181,6 +184,6 @@ require (
 )
 
 replace (
-	"local" => %v
+	%v => %v
 )`
 )
