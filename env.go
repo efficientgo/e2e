@@ -5,6 +5,7 @@ package e2e
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -218,19 +219,31 @@ type ReadinessProbe interface {
 	Ready(runnable Runnable) (err error)
 }
 
-// HTTPReadinessProbe checks readiness by making HTTP call and checking for expected HTTP status code.
+// HTTPReadinessProbe checks readiness by making HTTP or HTTPS call and checking for expected HTTP/HTTPS status code.
 type HTTPReadinessProbe struct {
 	portName                 string
 	path                     string
+	scheme                   string
 	expectedStatusRangeStart int
 	expectedStatusRangeEnd   int
 	expectedContent          []string
 }
 
 func NewHTTPReadinessProbe(portName string, path string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
+	return newHTTPReadinessProbe(portName, path, "HTTP",
+		expectedStatusRangeStart, expectedStatusRangeEnd, expectedContent...)
+}
+
+func NewHTTPSReadinessProbe(portName, path string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
+	return newHTTPReadinessProbe(portName, path, "HTTPS",
+		expectedStatusRangeStart, expectedStatusRangeEnd, expectedContent...)
+}
+
+func newHTTPReadinessProbe(portName, path, scheme string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
 	return &HTTPReadinessProbe{
 		portName:                 portName,
 		path:                     path,
+		scheme:                   scheme,
 		expectedStatusRangeStart: expectedStatusRangeStart,
 		expectedStatusRangeEnd:   expectedStatusRangeEnd,
 		expectedContent:          expectedContent,
@@ -246,7 +259,16 @@ func (p *HTTPReadinessProbe) Ready(runnable Runnable) (err error) {
 		return errors.New("service has stopped")
 	}
 
-	res, err := (&http.Client{Timeout: 1 * time.Second}).Get("http://" + endpoint + p.path)
+	httpClient := &http.Client{Timeout: 1 * time.Second}
+	if p.scheme == "HTTPS" {
+		httpClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+	}
+
+	res, err := httpClient.Get(p.scheme + "://" + endpoint + p.path)
 	if err != nil {
 		return err
 	}
