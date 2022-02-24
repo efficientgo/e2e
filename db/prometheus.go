@@ -61,7 +61,7 @@ scrape_configs:
 	return &Prometheus{InstrumentedRunnable: f.Init(e2e.StartOptions{
 		Image:     o.image,
 		Command:   e2e.NewCommandWithoutEntrypoint("prometheus", e2e.BuildArgs(args)...),
-		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", "", 200, 200),
+		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
 		User:      strconv.Itoa(os.Getuid()),
 	})}
 }

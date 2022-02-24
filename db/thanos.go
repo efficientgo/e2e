@@ -41,7 +41,7 @@ func NewThanosQuerier(env e2e.Environment, name string, endpointsAddresses []str
 	return e2e.NewInstrumentedRunnable(env, name, ports, "http").Init(e2e.StartOptions{
 		Image:     o.image,
 		Command:   e2e.NewCommand("query", e2e.BuildKingpinArgs(args)...),
-		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", "", 200, 200),
+		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
 		User:      strconv.Itoa(os.Getuid()),
 	})
 }
@@ -71,7 +71,7 @@ func NewThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable, opts 
 	return e2e.NewInstrumentedRunnable(env, name, ports, "http").Init(e2e.StartOptions{
 		Image:     o.image,
 		Command:   e2e.NewCommand("sidecar", e2e.BuildKingpinArgs(args)...),
-		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", "", 200, 200),
+		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
 		User:      strconv.Itoa(os.Getuid()),
 	})
 }
@@ -107,7 +107,7 @@ func NewThanosStore(env e2e.Environment, name string, bktConfigYaml []byte, opts
 	return f.Init(e2e.StartOptions{
 		Image:     o.image,
 		Command:   e2e.NewCommand("store", e2e.BuildKingpinArgs(args)...),
-		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", "", 200, 200),
+		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
 		User:      strconv.Itoa(os.Getuid()),
 	})
 }

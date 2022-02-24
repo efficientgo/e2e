@@ -218,10 +218,17 @@ type HTTPReadinessProbe struct {
 	expectedContent          []string
 }
 
-func NewHTTPReadinessProbe(portName, path, scheme string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
-	if scheme == "" {
-		scheme = "HTTP"
-	}
+func NewHTTPReadinessProbe(portName string, path string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
+	return newHTTPReadinessProbe(portName, path, "HTTP",
+		expectedStatusRangeStart, expectedStatusRangeEnd, expectedContent...)
+}
+
+func NewHTTPSReadinessProbe(portName, path string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
+	return newHTTPReadinessProbe(portName, path, "HTTPS",
+		expectedStatusRangeStart, expectedStatusRangeEnd, expectedContent...)
+}
+
+func newHTTPReadinessProbe(portName, path, scheme string, expectedStatusRangeStart, expectedStatusRangeEnd int, expectedContent ...string) *HTTPReadinessProbe {
 	return &HTTPReadinessProbe{
 		portName:                 portName,
 		path:                     path,
