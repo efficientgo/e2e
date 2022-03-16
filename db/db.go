@@ -43,7 +43,7 @@ const AccessPortName = "http"
 
 // NewMinio returns minio server, used as a local replacement for S3.
 func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) e2e.InstrumentedRunnable {
-	o := options{image: "minio/minio:RELEASE.2021-07-27T02-40-15Z"}
+	o := options{image: "minio/minio:RELEASE.2022-03-14T18-25-24Z"}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -72,7 +72,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) e2e.Ins
 				"useradd -G root -u %v me && mkdir -p %s && chown -R me %s &&"+
 					"curl -sSL --tlsv1.2 -O 'https://raw.githubusercontent.com/minio/kes/master/root.key' -O 'https://raw.githubusercontent.com/minio/kes/master/root.cert' && "+
 					"cp root.* /home/me/ && "+
-					"su - me -s /bin/sh -c 'mkdir -p %s && %s minio server --address :%v --quiet %v'",
+					"su - me -s /bin/sh -c 'mkdir -p %s && %s /opt/bin/minio server --address :%v --quiet %v'",
 				userID, f.InternalDir(), f.InternalDir(), filepath.Join(f.InternalDir(), bktName), strings.Join(envVars, " "), ports[AccessPortName], f.InternalDir()),
 			),
 			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/minio/health/live", 200, 200),
