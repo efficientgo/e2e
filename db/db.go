@@ -23,8 +23,9 @@ const (
 type Option func(*options)
 
 type options struct {
-	image        string
-	flagOverride map[string]string
+	image         string
+	flagOverride  map[string]string
+	customOptions map[string]interface{} // Any custom option to define difference in configuration, other than flags.
 }
 
 func WithImage(image string) Option {
@@ -39,10 +40,16 @@ func WithFlagOverride(ov map[string]string) Option {
 	}
 }
 
+func WithCustomOptions(co map[string]interface{}) Option {
+	return func(o *options) {
+		o.customOptions = co
+	}
+}
+
 const AccessPortName = "http"
 
 // NewMinio returns minio server, used as a local replacement for S3.
-func NewMinio(env e2e.Environment, name, bktName string, sse bool, opts ...Option) e2e.InstrumentedRunnable {
+func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) e2e.InstrumentedRunnable {
 	o := options{image: "minio/minio:RELEASE.2022-03-14T18-25-24Z"}
 	for _, opt := range opts {
 		opt(&o)
@@ -63,7 +70,8 @@ func NewMinio(env e2e.Environment, name, bktName string, sse bool, opts ...Optio
 	// Proper solution would be to contribute/create our own minio image which is non root.
 	command := fmt.Sprintf("useradd -G root -u %v me && mkdir -p %s && chown -R me %s &&", userID, f.InternalDir(), f.InternalDir())
 
-	if sse {
+	sse, ok := o.customOptions["SSE-S3"].(bool)
+	if ok && sse {
 		envVars = append(envVars, []string{
 			// https://docs.min.io/docs/minio-kms-quickstart-guide.html
 			"MINIO_KMS_KES_ENDPOINT=" + "https://play.min.io:7373",
