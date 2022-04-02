@@ -42,7 +42,7 @@ func WithFlagOverride(ov map[string]string) Option {
 const AccessPortName = "http"
 
 // NewMinio returns minio server, used as a local replacement for S3.
-func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) e2e.InstrumentedRunnable {
+func NewMinio(env e2e.Environment, name, bktName string, sse bool, opts ...Option) e2e.InstrumentedRunnable {
 	o := options{image: "minio/minio:RELEASE.2022-03-14T18-25-24Z"}
 	for _, opt := range opts {
 		opt(&o)
@@ -55,25 +55,32 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) e2e.Ins
 		"MINIO_ROOT_PASSWORD=" + MinioSecretKey,
 		"MINIO_BROWSER=" + "off",
 		"ENABLE_HTTPS=" + "0",
-		// https://docs.min.io/docs/minio-kms-quickstart-guide.html
-		"MINIO_KMS_KES_ENDPOINT=" + "https://play.min.io:7373",
-		"MINIO_KMS_KES_KEY_FILE=" + "root.key",
-		"MINIO_KMS_KES_CERT_FILE=" + "root.cert",
-		"MINIO_KMS_KES_KEY_NAME=" + "my-minio-key",
 	}
+
 	f := e2e.NewInstrumentedRunnable(env, name).WithPorts(ports, AccessPortName).Future()
+
+	// Hacky: Create user that matches ID with host ID to be able to remove .minio.sys details on the start.
+	// Proper solution would be to contribute/create our own minio image which is non root.
+	command := fmt.Sprintf("useradd -G root -u %v me && mkdir -p %s && chown -R me %s &&", userID, f.InternalDir(), f.InternalDir())
+
+	if sse {
+		envVars = append(envVars, []string{
+			// https://docs.min.io/docs/minio-kms-quickstart-guide.html
+			"MINIO_KMS_KES_ENDPOINT=" + "https://play.min.io:7373",
+			"MINIO_KMS_KES_KEY_FILE=" + "root.key",
+			"MINIO_KMS_KES_CERT_FILE=" + "root.cert",
+			"MINIO_KMS_KES_KEY_NAME=" + "my-minio-key",
+		}...)
+		command += "curl -sSL --tlsv1.3 -O 'https://raw.githubusercontent.com/minio/kes/master/root.key' -O 'https://raw.githubusercontent.com/minio/kes/master/root.cert' && cp root.* /home/me/ && "
+	}
+
 	return f.Init(
 		e2e.StartOptions{
 			Image: o.image,
 			// Create the required bucket before starting minio.
-			Command: e2e.NewCommandWithoutEntrypoint("sh", "-c", fmt.Sprintf(
-				// Hacky: Create user that matches ID with host ID to be able to remove .minio.sys details on the start.
-				// Proper solution would be to contribute/create our own minio image which is non root.
-				"useradd -G root -u %v me && mkdir -p %s && chown -R me %s &&"+
-					"curl -sSL --tlsv1.2 -O 'https://raw.githubusercontent.com/minio/kes/master/root.key' -O 'https://raw.githubusercontent.com/minio/kes/master/root.cert' && "+
-					"cp root.* /home/me/ && "+
-					"su - me -s /bin/sh -c 'mkdir -p %s && %s /opt/bin/minio server --address :%v --quiet %v'",
-				userID, f.InternalDir(), f.InternalDir(), filepath.Join(f.InternalDir(), bktName), strings.Join(envVars, " "), ports[AccessPortName], f.InternalDir()),
+			Command: e2e.NewCommandWithoutEntrypoint("sh", "-c", command+fmt.Sprintf(
+				"su - me -s /bin/sh -c 'mkdir -p %s && %s /opt/bin/minio server --address :%v --quiet %v'",
+				filepath.Join(f.InternalDir(), bktName), strings.Join(envVars, " "), ports[AccessPortName], f.InternalDir()),
 			),
 			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/minio/health/live", 200, 200),
 		},
