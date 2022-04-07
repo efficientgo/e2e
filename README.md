@@ -143,7 +143,7 @@ To see how it works in practice run our example code in [standalone.go](examples
 
 #### Bonus: Monitoring performance of e2e process itself.
 
-It's common pattern that you want to schedule some containers but also, you might want to monitor some local code you just wrong. For this you can run your local code in adhoc container using `e2e.Containarize()`:
+It's common pattern that you want to schedule some containers but also, you might want to monitor some local code you just wrote. For this you can run your local code in and ad-hoc container using `e2e.Containerize()`:
 
 ```go
 	l, err := e2e.Containerize(e, "run", Run)
@@ -152,7 +152,7 @@ It's common pattern that you want to schedule some containers but also, you migh
 	testutil.Ok(t, e2e.StartAndWaitReady(l))
 ```
 
-While having the Run in separate non-test file, for example:
+While having the `Run` function in a separate non-test file. The function must be exported, for example:
 
 ```go
 func Run(ctx context.Context) error {
