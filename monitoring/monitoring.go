@@ -6,7 +6,6 @@ package e2emonitoring
 import (
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,10 +18,10 @@ import (
 	"github.com/efficientgo/e2e/monitoring/promconfig/discovery/targetgroup"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
 )
 
@@ -117,17 +116,7 @@ func (l *listener) OnRunnableChange(started []e2e.Runnable) error {
 }
 
 type opt struct {
-	currentProcessAsContainer bool
-	scrapeInterval            time.Duration
-}
-
-// WithCurrentProcessAsContainer makes Start put current process PID into cgroups and organize
-// them in a way that makes cadvisor to watch those as it would be any other container.
-// NOTE: This option requires a manual on-off per machine/restart setup that will be printed on first start (permissions).
-func WithCurrentProcessAsContainer() func(*opt) {
-	return func(o *opt) {
-		o.currentProcessAsContainer = true
-	}
+	scrapeInterval time.Duration
 }
 
 // WithScrapeInterval changes how often metrics are scrape by Prometheus. 5s by default.
@@ -150,9 +139,8 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	// Expose metrics from the current process.
 	metrics := prometheus.NewRegistry()
 	metrics.MustRegister(
-		version.NewCollector("thanos"),
-		prometheus.NewGoCollector(),
-		prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}),
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 
 	m := http.NewServeMux()
@@ -186,20 +174,8 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	}
 	env.AddListener(l)
 
-	var path []string
-	if opt.currentProcessAsContainer {
-		// Do cgroup magic allowing us to monitor current PID as container.
-		path, err = setupPIDAsContainer(env, os.Getpid())
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if err := newCadvisor(env, "cadvisor", path...).Start(); err != nil {
-		return nil, err
-	}
-
-	if err := e2e.StartAndWaitReady(p); err != nil {
+	c := newCadvisor(env, "cadvisor")
+	if err := e2e.StartAndWaitReady(c, p); err != nil {
 		return nil, err
 	}
 
@@ -224,7 +200,7 @@ func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) e2e
 			"--docker_only=true",
 			"--raw_cgroup_prefix_whitelist="+strings.Join(cgroupPrefixes, ","),
 		),
-		Image: "gcr.io/cadvisor/cadvisor:v0.37.5",
+		Image: "gcr.io/cadvisor/cadvisor:v0.39.3",
 		// See https://github.com/google/cadvisor/blob/master/docs/running.md.
 		Volumes: []string{
 			"/:/rootfs:ro",

@@ -627,8 +627,8 @@ func (d *dockerRunnable) Exec(command Command) (string, string, error) {
 	args := []string{"exec", d.containerName()}
 	args = append(args, command.Cmd)
 	args = append(args, command.Args...)
+	cmd := d.env.exec("docker", args...)
 
-	cmd := exec.Command("docker", args...)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 

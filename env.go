@@ -53,7 +53,7 @@ type Environment interface {
 	Runnable(name string) RunnableBuilder
 	// AddListener registers given listener to be notified on environment runnable changes.
 	AddListener(listener EnvironmentListener)
-	// AddCloser registers function to be invoked on close.
+	// AddCloser registers function to be invoked on close, before all containers are sent kill signal.
 	AddCloser(func())
 	// Close shutdowns isolated environment and cleans its resources.
 	Close()
@@ -152,7 +152,7 @@ type runnable interface {
 
 	// Exec runs the provided command inside the same process context (e.g in the docker container).
 	// It returns the stdout, stderr, and error response from attempting to run the command.
-	Exec(command Command) (string, string, error)
+	Exec(command Command) (stdout string, stderr string, err error)
 
 	// Endpoint returns external runnable endpoint (host:port) for given port name.
 	// External means that it will be accessible only from host, but not from docker containers.
