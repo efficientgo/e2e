@@ -4,6 +4,7 @@
 package e2e_test
 
 import (
+	"context"
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
@@ -80,6 +81,14 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Equals(t, expectedFlagsOutputProm2, out)
 
 	testutil.NotOk(t, p1.Start()) // Starting ok, should fail.
+
+	// Batch job.
+	batch := e.Runnable("batch").Init(e2e.StartOptions{Image: "ubuntu:20.04", Command: e2e.NewCommandWithoutEntrypoint("echo", "yolo")})
+	for i := 0; i < 3; i++ {
+		out, err := batch.RunOneOff(context.Background())
+		testutil.Ok(t, err)
+		testutil.Equals(t, "yolo", out)
+	}
 
 	e.Close()
 	afterClose := e2edb.NewPrometheus(e, "prometheus-3") // Should fail.
