@@ -23,9 +23,13 @@ const (
 type Option func(*options)
 
 type options struct {
-	image         string
-	flagOverride  map[string]string
-	customOptions map[string]interface{} // Any custom option to define difference in configuration, other than flags.
+	image        string
+	flagOverride map[string]string
+	minioOptions minioOptions
+}
+
+type minioOptions struct {
+	enableSSE bool
 }
 
 func WithImage(image string) Option {
@@ -40,9 +44,9 @@ func WithFlagOverride(ov map[string]string) Option {
 	}
 }
 
-func WithCustomOptions(co map[string]interface{}) Option {
+func WithMinioSSE() Option {
 	return func(o *options) {
-		o.customOptions = co
+		o.minioOptions.enableSSE = true
 	}
 }
 
@@ -70,8 +74,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) e2e.Ins
 	// Proper solution would be to contribute/create our own minio image which is non root.
 	command := fmt.Sprintf("useradd -G root -u %v me && mkdir -p %s && chown -R me %s &&", userID, f.InternalDir(), f.InternalDir())
 
-	sse, ok := o.customOptions["SSE-S3"].(bool)
-	if ok && sse {
+	if o.minioOptions.enableSSE {
 		envVars = append(envVars, []string{
 			// https://docs.min.io/docs/minio-kms-quickstart-guide.html
 			"MINIO_KMS_KES_ENDPOINT=" + "https://play.min.io:7373",
