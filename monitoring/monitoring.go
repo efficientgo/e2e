@@ -117,12 +117,22 @@ func (l *listener) OnRunnableChange(started []e2e.Runnable) error {
 
 type opt struct {
 	scrapeInterval time.Duration
+	customRegistry *prometheus.Registry
 }
 
 // WithScrapeInterval changes how often metrics are scrape by Prometheus. 5s by default.
 func WithScrapeInterval(interval time.Duration) func(*opt) {
 	return func(o *opt) {
 		o.scrapeInterval = interval
+	}
+}
+
+// WithCustomRegistry allows injecting a custom registry to use for this process metrics.
+// NOTE(bwplotka): Injected registry will be used as is, while the default registry
+// will have prometheus.NewGoCollector() and prometheus.NewProcessCollector(..) registered.
+func WithCustomRegistry(reg *prometheus.Registry) func(*opt) {
+	return func(o *opt) {
+		o.customRegistry = reg
 	}
 }
 
@@ -137,11 +147,14 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	}
 
 	// Expose metrics from the current process.
-	metrics := prometheus.NewRegistry()
-	metrics.MustRegister(
-		collectors.NewGoCollector(),
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-	)
+	metrics := opt.customRegistry
+	if metrics == nil {
+		metrics = prometheus.NewRegistry()
+		metrics.MustRegister(
+			collectors.NewGoCollector(),
+			collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		)
+	}
 
 	m := http.NewServeMux()
 	h := promhttp.HandlerFor(metrics, promhttp.HandlerOpts{})
