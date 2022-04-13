@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -177,6 +178,7 @@ func (e Errorer) Name() string                              { return e.name }
 func (Errorer) Dir() string                                 { return "" }
 func (Errorer) InternalDir() string                         { return "" }
 func (e Errorer) Start() error                              { return e.err }
+func (e Errorer) RunOnce(context.Context) (string, error)   { return "", nil }
 func (e Errorer) WaitReady() error                          { return e.err }
 func (e Errorer) Kill() error                               { return e.err }
 func (e Errorer) Stop() error                               { return e.err }
@@ -229,7 +231,7 @@ func (e *DockerEnvironment) SharedDir() string {
 }
 
 func (e *DockerEnvironment) buildDockerRunArgs(name string, ports map[string]int, opts StartOptions) []string {
-	args := []string{"run", "--rm", "--net=" + e.networkName, "--name=" + dockerNetworkContainerHost(e.networkName, name), "--hostname=" + name}
+	args := []string{"--rm", "--net=" + e.networkName, "--name=" + dockerNetworkContainerHost(e.networkName, name), "--hostname=" + name}
 
 	// Mount the shared/ directory into the container. We share all containers dir to each other to allow easier scenarios.
 	args = append(args, "-v", fmt.Sprintf("%s:%s:z", e.dir, dockerLocalSharedDir))
@@ -284,10 +286,9 @@ type dockerRunnable struct {
 	name  string
 	ports map[string]int
 
-	logger              Logger
-	opts                StartOptions
-	waitBackoffReady    *backoff.Backoff
-	waitBackoffDownload *backoff.Backoff
+	logger           Logger
+	opts             StartOptions
+	waitBackoffReady *backoff.Backoff
 
 	// usedNetworkName is docker NetworkName used to start this container.
 	// If empty it means container is stopped.
@@ -320,17 +321,8 @@ func (d *dockerRunnable) Init(opts StartOptions) Runnable {
 		}
 	}
 
-	if opts.WaitDownloadBackoff == nil {
-		opts.WaitDownloadBackoff = &backoff.Config{
-			Min:        500 * time.Millisecond,
-			Max:        1 * time.Second,
-			MaxRetries: 100,
-		}
-	}
-
 	d.opts = opts
 	d.waitBackoffReady = backoff.New(context.Background(), *opts.WaitReadyBackoff)
-	d.waitBackoffDownload = backoff.New(context.Background(), *opts.WaitDownloadBackoff)
 	return d
 }
 
@@ -354,6 +346,37 @@ func (d *dockerRunnable) Future() FutureRunnable {
 
 func (d *dockerRunnable) IsRunning() bool {
 	return d.usedNetworkName != ""
+}
+
+func (d *dockerRunnable) RunOnce(ctx context.Context) (output string, err error) {
+	if d.IsRunning() {
+		return "", errors.Errorf("%v is running. Stop or kill it first to restart.", d.Name())
+	}
+
+	i, ok := d.concreteType.(identificable)
+	if !ok {
+		return "", errors.Errorf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; not implementing identificable", d.concreteType)
+	}
+	if i.id() != d.id() {
+		return "", errors.Errorf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; id %v, expected %v", d.concreteType, i.id(), d.id())
+	}
+
+	d.logger.Log("Starting", d.Name())
+
+	// Make sure the image is available locally; if not wait for it to download.
+	if err = d.prePullImage(ctx); err != nil {
+		return "", err
+	}
+
+	cmd := d.env.execContext(ctx, "docker", append([]string{"run", "-t"}, d.env.buildDockerRunArgs(d.name, d.ports, d.opts)...)...)
+	out := bytes.Buffer{}
+	l := &LinePrefixLogger{prefix: d.Name() + ": ", logger: d.logger}
+	ml := io.MultiWriter(&out, l)
+
+	cmd.Stdout = ml
+	cmd.Stderr = ml
+	err = cmd.Run()
+	return strings.TrimSuffix(strings.TrimSuffix(out.String(), "\n"), "\r"), err
 }
 
 // Start starts runnable.
@@ -381,7 +404,12 @@ func (d *dockerRunnable) Start() (err error) {
 		}
 	}()
 
-	cmd := d.env.exec("docker", d.env.buildDockerRunArgs(d.name, d.ports, d.opts)...)
+	// Make sure the image is available locally; if not wait for it to download.
+	if err = d.prePullImage(context.TODO()); err != nil {
+		return err
+	}
+
+	cmd := d.env.exec("docker", append([]string{"run"}, d.env.buildDockerRunArgs(d.name, d.ports, d.opts)...)...)
 	l := &LinePrefixLogger{prefix: d.Name() + ": ", logger: d.logger}
 	cmd.Stdout = l
 	cmd.Stderr = l
@@ -389,11 +417,6 @@ func (d *dockerRunnable) Start() (err error) {
 		return err
 	}
 	d.usedNetworkName = d.env.networkName
-
-	// Make sure the image is available locally; if not wait for it to download.
-	if err = d.waitForImageDownload(); err != nil {
-		return err
-	}
 
 	// Wait until the container has been started.
 	if err = d.waitForRunning(); err != nil {
@@ -574,30 +597,19 @@ func (d *dockerRunnable) waitForRunning() (err error) {
 	return errors.Wrapf(err, "docker container %s failed to start", d.Name())
 }
 
-func (d *dockerRunnable) waitForImageDownload() (err error) {
-	if !d.IsRunning() {
-		return errors.Errorf("service %s is stopped", d.Name())
+func (d *dockerRunnable) prePullImage(ctx context.Context) (err error) {
+	if d.IsRunning() {
+		return errors.Errorf("service %s is running; expected stopped", d.Name())
 	}
 
-	for d.waitBackoffDownload.Reset(); d.waitBackoffDownload.Ongoing(); {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_, err = d.env.execContext(
-			ctx,
-			"docker",
-			"image",
-			"inspect",
-			d.opts.Image,
-		).CombinedOutput()
-		if err != nil {
-			d.waitBackoffDownload.Wait()
-			continue
-		}
-
-		return nil
+	cmd := d.env.execContext(ctx, "docker", "pull", d.opts.Image)
+	l := &LinePrefixLogger{prefix: d.Name() + ": ", logger: d.logger}
+	cmd.Stdout = l
+	cmd.Stderr = l
+	if err = cmd.Run(); err != nil {
+		return errors.Wrapf(err, "docker image %s failed to download", d.opts.Image)
 	}
-
-	return errors.Wrapf(err, "docker image %s failed to download", d.opts.Image)
+	return nil
 }
 
 func (d *dockerRunnable) WaitReady() (err error) {

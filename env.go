@@ -71,12 +71,11 @@ type StartOptions struct {
 	Command   Command
 	Readiness ReadinessProbe
 	// WaitReadyBackofff represents backoff used for WaitReady.
-	WaitReadyBackoff    *backoff.Config
-	WaitDownloadBackoff *backoff.Config
-	Volumes             []string
-	UserNs              string
-	Privileged          bool
-	Capabilities        []RunnableCapabilities
+	WaitReadyBackoff *backoff.Config
+	Volumes          []string
+	UserNs           string
+	Privileged       bool
+	Capabilities     []RunnableCapabilities
 }
 
 type RunnableCapabilities string
@@ -137,6 +136,9 @@ type runnable interface {
 
 	// Start tells Runnable to start.
 	Start() error
+
+	// RunOnce tells Runnable to start as batch job and wait until completion with output capture.
+	RunOnce(ctx context.Context) (output string, err error)
 
 	// WaitReady waits until the Runnable is ready. It should return error if runnable is stopped in mean time or
 	// it was stopped before.
