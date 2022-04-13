@@ -137,8 +137,8 @@ type runnable interface {
 	// Start tells Runnable to start.
 	Start() error
 
-	// RunOneOff tells Runnable to start as batch job and wait until completion with output capture.
-	RunOneOff(ctx context.Context) (output string, err error)
+	// RunOnce tells Runnable to start as batch job and wait until completion with output capture.
+	RunOnce(ctx context.Context) (output string, err error)
 
 	// WaitReady waits until the Runnable is ready. It should return error if runnable is stopped in mean time or
 	// it was stopped before.

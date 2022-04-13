@@ -178,7 +178,7 @@ func (e Errorer) Name() string                              { return e.name }
 func (Errorer) Dir() string                                 { return "" }
 func (Errorer) InternalDir() string                         { return "" }
 func (e Errorer) Start() error                              { return e.err }
-func (e Errorer) RunOneOff(context.Context) (string, error) { return "", nil }
+func (e Errorer) RunOnce(context.Context) (string, error)   { return "", nil }
 func (e Errorer) WaitReady() error                          { return e.err }
 func (e Errorer) Kill() error                               { return e.err }
 func (e Errorer) Stop() error                               { return e.err }
@@ -348,7 +348,7 @@ func (d *dockerRunnable) IsRunning() bool {
 	return d.usedNetworkName != ""
 }
 
-func (d *dockerRunnable) RunOneOff(ctx context.Context) (output string, err error) {
+func (d *dockerRunnable) RunOnce(ctx context.Context) (output string, err error) {
 	if d.IsRunning() {
 		return "", errors.Errorf("%v is running. Stop or kill it first to restart.", d.Name())
 	}
@@ -368,7 +368,7 @@ func (d *dockerRunnable) RunOneOff(ctx context.Context) (output string, err erro
 		return "", err
 	}
 
-	cmd := d.env.execContext(ctx, "docker", append([]string{"run", "-t", "--rm"}, d.env.buildDockerRunArgs(d.name, d.ports, d.opts)...)...)
+	cmd := d.env.execContext(ctx, "docker", append([]string{"run", "-t"}, d.env.buildDockerRunArgs(d.name, d.ports, d.opts)...)...)
 	out := bytes.Buffer{}
 	l := &LinePrefixLogger{prefix: d.Name() + ": ", logger: d.logger}
 	ml := io.MultiWriter(&out, l)

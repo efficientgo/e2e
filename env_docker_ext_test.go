@@ -85,7 +85,7 @@ func TestDockerEnvironment(t *testing.T) {
 	// Batch job.
 	batch := e.Runnable("batch").Init(e2e.StartOptions{Image: "ubuntu:20.04", Command: e2e.NewCommandWithoutEntrypoint("echo", "yolo")})
 	for i := 0; i < 3; i++ {
-		out, err := batch.RunOneOff(context.Background())
+		out, err := batch.RunOnce(context.Background())
 		testutil.Ok(t, err)
 		testutil.Equals(t, "yolo", out)
 	}
