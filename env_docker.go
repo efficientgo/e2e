@@ -602,6 +602,11 @@ func (d *dockerRunnable) prePullImage(ctx context.Context) (err error) {
 		return errors.Errorf("service %s is running; expected stopped", d.Name())
 	}
 
+	if _, err = d.env.execContext(ctx, "docker", "image", "inspect", d.opts.Image).CombinedOutput(); err == nil {
+		return nil
+	}
+
+	// Assuming Error: No such image: <image>.
 	cmd := d.env.execContext(ctx, "docker", "pull", d.opts.Image)
 	l := &LinePrefixLogger{prefix: d.Name() + ": ", logger: d.logger}
 	cmd.Stdout = l
