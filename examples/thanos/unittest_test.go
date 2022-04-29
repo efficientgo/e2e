@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -82,4 +83,12 @@ up{instance="%v", job="myself", prometheus="prometheus-2"} => 1 @[%v]`, p1.Inter
 			v.String(),
 		)
 	}
+
+	// Batch job example.
+	batch := e.Runnable("batch").Init(e2e.StartOptions{Image: "ubuntu:20.04", Command: e2e.NewCommandRunUntilStop()})
+	testutil.Ok(t, batch.Start())
+
+	var out bytes.Buffer
+	testutil.Ok(t, batch.Exec(e2e.NewCommand("echo", "it works"), e2e.WithExecOptionStdout(&out)))
+	testutil.Equals(t, "it works\n", out.String())
 }

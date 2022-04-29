@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -137,9 +138,6 @@ type runnable interface {
 	// Start tells Runnable to start.
 	Start() error
 
-	// RunOnce tells Runnable to start as batch job and wait until completion with output capture.
-	RunOnce(ctx context.Context) (output string, err error)
-
 	// WaitReady waits until the Runnable is ready. It should return error if runnable is stopped in mean time or
 	// it was stopped before.
 	WaitReady() error
@@ -152,15 +150,39 @@ type runnable interface {
 	// It should be ok to Stop and Kill more than once, with next invokes being noop.
 	Stop() error
 
-	// Exec runs the provided command inside the same process context (e.g in the docker container).
-	// It returns the stdout, stderr, and error response from attempting to run the command.
-	Exec(command Command) (stdout string, stderr string, err error)
+	// Exec runs the provided command inside the same process context (e.g. in the running docker container).
+	// It returns error response from attempting to run the command.
+	// See ExecOptions for more options like returning output or attaching to e2e logging.
+	Exec(Command, ...ExecOption) error
 
 	// Endpoint returns external runnable endpoint (host:port) for given port name.
 	// External means that it will be accessible only from host, but not from docker containers.
 	//
 	// If your service is not running, this method returns incorrect `stopped` endpoint.
 	Endpoint(portName string) string
+}
+
+type ExecOption func(o *ExecOptions)
+
+type ExecOptions struct {
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
+// WithExecOptionStdout sets stdout writer to be used when exec is performed.
+// By default, it is streaming to the env logger.
+func WithExecOptionStdout(stdout io.Writer) ExecOption {
+	return func(o *ExecOptions) {
+		o.Stdout = stdout
+	}
+}
+
+// WithExecOptionStderr sets stderr writer to be used when exec is performed.
+// By default, it is streaming to the env logger.
+func WithExecOptionStderr(stderr io.Writer) ExecOption {
+	return func(o *ExecOptions) {
+		o.Stderr = stderr
+	}
 }
 
 // Runnable is the entity that environment returns to manage single instance.
@@ -215,6 +237,11 @@ func NewCommandWithoutEntrypoint(cmd string, args ...string) Command {
 		Args:               args,
 		EntrypointDisabled: true,
 	}
+}
+
+// NewCommandRunUntilStop is a command that allows to keep container running.
+func NewCommandRunUntilStop() Command {
+	return NewCommandWithoutEntrypoint("tail", "-f", "/dev/null")
 }
 
 type ReadinessProbe interface {
@@ -326,6 +353,5 @@ func NewCmdReadinessProbe(cmd Command) *CmdReadinessProbe {
 }
 
 func (p *CmdReadinessProbe) Ready(runnable Runnable) error {
-	_, _, err := runnable.Exec(p.cmd)
-	return err
+	return runnable.Exec(p.cmd)
 }
