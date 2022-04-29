@@ -4,7 +4,7 @@
 package e2e_test
 
 import (
-	"context"
+	"bytes"
 	"io/ioutil"
 	"net/http"
 	"path/filepath"
@@ -39,8 +39,7 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Ok(t, p1.Stop())
 	testutil.Ok(t, p1.Kill())
 
-	_, _, err = p1.Exec(wgetFlagsCmd("localhost:9090"))
-	testutil.NotOk(t, err)
+	testutil.NotOk(t, p1.Exec(wgetFlagsCmd("localhost:9090")))
 	testutil.Equals(t, "stopped", p1.Endpoint("http"))
 	testutil.Equals(t, "stopped", p1.Endpoint("not-existing"))
 
@@ -62,9 +61,9 @@ func TestDockerEnvironment(t *testing.T) {
 		expectedFlagsOutputProm1 = "{\"status\":\"success\",\"data\":{\"alertmanager.notification-queue-capacity\":\"10000\",\"alertmanager.timeout\":\"\",\"config.file\":\"/shared/data/prometheus-1/prometheus.yml\",\"enable-feature\":\"\",\"log.format\":\"logfmt\",\"log.level\":\"info\",\"query.lookback-delta\":\"5m\",\"query.max-concurrency\":\"20\",\"query.max-samples\":\"50000000\",\"query.timeout\":\"2m\",\"rules.alert.for-grace-period\":\"10m\",\"rules.alert.for-outage-tolerance\":\"1h\",\"rules.alert.resend-delay\":\"1m\",\"scrape.adjust-timestamps\":\"true\",\"storage.exemplars.exemplars-limit\":\"0\",\"storage.remote.flush-deadline\":\"1m\",\"storage.remote.read-concurrent-limit\":\"10\",\"storage.remote.read-max-bytes-in-frame\":\"1048576\",\"storage.remote.read-sample-limit\":\"50000000\",\"storage.tsdb.allow-overlapping-blocks\":\"false\",\"storage.tsdb.max-block-chunk-segment-size\":\"0B\",\"storage.tsdb.max-block-duration\":\"2h\",\"storage.tsdb.min-block-duration\":\"2h\",\"storage.tsdb.no-lockfile\":\"false\",\"storage.tsdb.path\":\"/shared/data/prometheus-1\",\"storage.tsdb.retention\":\"0s\",\"storage.tsdb.retention.size\":\"0B\",\"storage.tsdb.retention.time\":\"0s\",\"storage.tsdb.wal-compression\":\"true\",\"storage.tsdb.wal-segment-size\":\"0B\",\"web.config.file\":\"\",\"web.console.libraries\":\"console_libraries\",\"web.console.templates\":\"consoles\",\"web.cors.origin\":\".*\",\"web.enable-admin-api\":\"false\",\"web.enable-lifecycle\":\"false\",\"web.external-url\":\"\",\"web.listen-address\":\":9090\",\"web.max-connections\":\"512\",\"web.page-title\":\"Prometheus Time Series Collection and Processing Server\",\"web.read-timeout\":\"5m\",\"web.route-prefix\":\"/\",\"web.user-assets\":\"\"}}"
 		expectedFlagsOutputProm2 = "{\"status\":\"success\",\"data\":{\"alertmanager.notification-queue-capacity\":\"10000\",\"alertmanager.timeout\":\"\",\"config.file\":\"/shared/data/prometheus-2/prometheus.yml\",\"enable-feature\":\"\",\"log.format\":\"logfmt\",\"log.level\":\"info\",\"query.lookback-delta\":\"5m\",\"query.max-concurrency\":\"20\",\"query.max-samples\":\"50000000\",\"query.timeout\":\"2m\",\"rules.alert.for-grace-period\":\"10m\",\"rules.alert.for-outage-tolerance\":\"1h\",\"rules.alert.resend-delay\":\"1m\",\"scrape.adjust-timestamps\":\"true\",\"storage.exemplars.exemplars-limit\":\"0\",\"storage.remote.flush-deadline\":\"1m\",\"storage.remote.read-concurrent-limit\":\"10\",\"storage.remote.read-max-bytes-in-frame\":\"1048576\",\"storage.remote.read-sample-limit\":\"50000000\",\"storage.tsdb.allow-overlapping-blocks\":\"false\",\"storage.tsdb.max-block-chunk-segment-size\":\"0B\",\"storage.tsdb.max-block-duration\":\"2h\",\"storage.tsdb.min-block-duration\":\"2h\",\"storage.tsdb.no-lockfile\":\"false\",\"storage.tsdb.path\":\"/shared/data/prometheus-2\",\"storage.tsdb.retention\":\"0s\",\"storage.tsdb.retention.size\":\"0B\",\"storage.tsdb.retention.time\":\"0s\",\"storage.tsdb.wal-compression\":\"true\",\"storage.tsdb.wal-segment-size\":\"0B\",\"web.config.file\":\"\",\"web.console.libraries\":\"console_libraries\",\"web.console.templates\":\"consoles\",\"web.cors.origin\":\".*\",\"web.enable-admin-api\":\"false\",\"web.enable-lifecycle\":\"false\",\"web.external-url\":\"\",\"web.listen-address\":\":9090\",\"web.max-connections\":\"512\",\"web.page-title\":\"Prometheus Time Series Collection and Processing Server\",\"web.read-timeout\":\"5m\",\"web.route-prefix\":\"/\",\"web.user-assets\":\"\"}}"
 	)
-	out, errout, err := p1.Exec(wgetFlagsCmd("localhost:9090"))
-	testutil.Ok(t, err, errout)
-	testutil.Equals(t, expectedFlagsOutputProm1, out)
+	var out bytes.Buffer
+	testutil.Ok(t, p1.Exec(wgetFlagsCmd("localhost:9090"), e2e.WithExecOptionStdout(&out)))
+	testutil.Equals(t, expectedFlagsOutputProm1, out.String())
 
 	resp, err := http.Get("http://" + p1.Endpoint("http") + "/api/v1/status/flags")
 	testutil.Ok(t, err)
@@ -76,18 +75,19 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Equals(t, "", p1.Endpoint("not-existing"))
 
 	// Now try the same but cross containers.
-	out, errout, err = p1.Exec(wgetFlagsCmd(p2.InternalEndpoint("http")))
-	testutil.Ok(t, err, errout)
-	testutil.Equals(t, expectedFlagsOutputProm2, out)
+	out.Reset()
+	testutil.Ok(t, p1.Exec(wgetFlagsCmd(p2.InternalEndpoint("http")), e2e.WithExecOptionStdout(&out)))
+	testutil.Equals(t, expectedFlagsOutputProm2, out.String())
 
 	testutil.NotOk(t, p1.Start()) // Starting ok, should fail.
 
-	// Batch job.
-	batch := e.Runnable("batch").Init(e2e.StartOptions{Image: "ubuntu:20.04", Command: e2e.NewCommandWithoutEntrypoint("echo", "yolo")})
+	// Batch job example and test.
+	batch := e.Runnable("batch").Init(e2e.StartOptions{Image: "ubuntu:20.04", Command: e2e.NewCommandRunUntilStop()})
+	testutil.Ok(t, batch.Start())
 	for i := 0; i < 3; i++ {
-		out, err := batch.RunOnce(context.Background())
-		testutil.Ok(t, err)
-		testutil.Equals(t, "yolo", out)
+		out.Reset()
+		testutil.Ok(t, batch.Exec(e2e.NewCommand("echo", "yolo"), e2e.WithExecOptionStdout(&out)))
+		testutil.Equals(t, "yolo\n", out.String())
 	}
 
 	e.Close()

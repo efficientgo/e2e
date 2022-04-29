@@ -72,8 +72,7 @@ func (p *Prometheus) SetConfig(config string) error {
 	}
 
 	if p.IsRunning() {
-		_, _, err := p.Exec(e2e.NewCommand("kill", "-SIGHUP", "1"))
-		return err
+		return p.Exec(e2e.NewCommand("kill", "-SIGHUP", "1"))
 	}
 	return nil
 }
