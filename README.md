@@ -27,14 +27,14 @@ Let's go through an example leveraging `go test` flow:
 2. Implement test. Start by creating environment. Currently `e2e` supports Docker environment only. Use unique name for all your tests. It's recommended to keep it stable so resources are consistently cleaned.
 
    ```go mdox-exec="sed -n '22,26p' examples/thanos/unittest_test.go"
+
    	// Start isolated environment with given ref.
    	e, err := e2e.NewDockerEnvironment("e2e_example")
    	testutil.Ok(t, err)
    	// Make sure resources (e.g docker containers, network, dir) are cleaned.
-   	t.Cleanup(e.Close)
    ```
 
-3. Implement the workload by embedding`e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in [e2edb](db/) package. For example implementing function that schedules Jaeger with our desired configuration could look like this:
+3. Implement the workload by embedding `e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in [e2edb](db/) package. For example implementing function that schedules Jaeger with our desired configuration could look like this:
 
    ```go mdox-exec="sed -n '35,42p' examples/thanos/standalone.go"
    	// Setup Jaeger for example purposes, on how easy is to setup tracing pipeline in e2e framework.
@@ -49,7 +49,8 @@ Let's go through an example leveraging `go test` flow:
 
 4. Program your scenario as you want. You can start, wait for their readiness, stop, check their metrics and use their network endpoints from both unit test (`Endpoint`) as well as within each workload (`InternalEndpoint`). You can also access workload directory. There is a shared directory across all workloads. Check `Dir` and `InternalDir` runnable methods.
 
-   ```go mdox-exec="sed -n '28,86p' examples/thanos/unittest_test.go"
+   ```go mdox-exec="sed -n '28,93p' examples/thanos/unittest_test.go"
+
    	// Create structs for Prometheus containers scraping itself.
    	p1 := e2edb.NewPrometheus(e, "prometheus-1")
    	s1 := e2edb.NewThanosSidecar(e, "sidecar-1", p1)
@@ -77,16 +78,16 @@ Let's go through an example leveraging `go test` flow:
    	testutil.Ok(t, err)
 
    	{
-        now := model.Now()
-        v, w, err := v1.NewAPI(a).Query(context.Background(), "up{}", now.Time())
-        testutil.Ok(t, err)
-        testutil.Equals(t, 0, len(w))
-        testutil.Equals(
-            t,
-            fmt.Sprintf(`up{instance="%v", job="myself", prometheus="prometheus-1"} => 1 @[%v]
+   		now := model.Now()
+   		v, w, err := v1.NewAPI(a).Query(context.Background(), "up{}", now.Time())
+   		testutil.Ok(t, err)
+   		testutil.Equals(t, 0, len(w))
+   		testutil.Equals(
+   			t,
+   			fmt.Sprintf(`up{instance="%v", job="myself", prometheus="prometheus-1"} => 1 @[%v]
    up{instance="%v", job="myself", prometheus="prometheus-2"} => 1 @[%v]`, p1.InternalEndpoint(e2edb.AccessPortName), now, p2.InternalEndpoint(e2edb.AccessPortName), now),
-            v.String(),
-        )
+   			v.String(),
+   		)
    	}
 
    	// Stop first Prometheus and sidecar.
@@ -97,17 +98,24 @@ Let's go through an example leveraging `go test` flow:
    	testutil.Ok(t, t1.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"thanos_store_nodes_grpc_connections"}, e2e.WaitMissingMetrics()))
 
    	{
-        now := model.Now()
-        v, w, err := v1.NewAPI(a).Query(context.Background(), "up{}", now.Time())
-        testutil.Ok(t, err)
-        testutil.Equals(t, 0, len(w))
-        testutil.Equals(
-            t,
-            fmt.Sprintf(`up{instance="%v", job="myself", prometheus="prometheus-2"} => 1 @[%v]`, p2.InternalEndpoint(e2edb.AccessPortName), now),
-            v.String(),
-        )
+   		now := model.Now()
+   		v, w, err := v1.NewAPI(a).Query(context.Background(), "up{}", now.Time())
+   		testutil.Ok(t, err)
+   		testutil.Equals(t, 0, len(w))
+   		testutil.Equals(
+   			t,
+   			fmt.Sprintf(`up{instance="%v", job="myself", prometheus="prometheus-2"} => 1 @[%v]`, p2.InternalEndpoint(e2edb.AccessPortName), now),
+   			v.String(),
+   		)
    	}
-   }
+
+   	// Batch job example.
+   	batch := e.Runnable("batch").Init(e2e.StartOptions{Image: "ubuntu:20.04", Command: e2e.NewCommandRunUntilStop()})
+   	testutil.Ok(t, batch.Start())
+
+   	var out bytes.Buffer
+   	testutil.Ok(t, batch.Exec(e2e.NewCommand("echo", "it works"), e2e.WithExecOptionStdout(&out)))
+   	testutil.Equals(t, "it works\n", out.String())
    ```
 
 ### Interactive

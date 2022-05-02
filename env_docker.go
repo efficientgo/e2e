@@ -4,12 +4,10 @@
 package e2e
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -178,11 +176,10 @@ func (e Errorer) Name() string                              { return e.name }
 func (Errorer) Dir() string                                 { return "" }
 func (Errorer) InternalDir() string                         { return "" }
 func (e Errorer) Start() error                              { return e.err }
-func (e Errorer) RunOnce(context.Context) (string, error)   { return "", nil }
 func (e Errorer) WaitReady() error                          { return e.err }
 func (e Errorer) Kill() error                               { return e.err }
 func (e Errorer) Stop() error                               { return e.err }
-func (e Errorer) Exec(Command) (string, string, error)      { return "", "", e.err }
+func (e Errorer) Exec(Command, ...ExecOption) error         { return e.err }
 func (Errorer) Endpoint(string) string                      { return "" }
 func (Errorer) InternalEndpoint(string) string              { return "" }
 func (Errorer) IsRunning() bool                             { return false }
@@ -348,37 +345,6 @@ func (d *dockerRunnable) IsRunning() bool {
 	return d.usedNetworkName != ""
 }
 
-func (d *dockerRunnable) RunOnce(ctx context.Context) (output string, err error) {
-	if d.IsRunning() {
-		return "", errors.Errorf("%v is running. Stop or kill it first to restart.", d.Name())
-	}
-
-	i, ok := d.concreteType.(identificable)
-	if !ok {
-		return "", errors.Errorf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; not implementing identificable", d.concreteType)
-	}
-	if i.id() != d.id() {
-		return "", errors.Errorf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; id %v, expected %v", d.concreteType, i.id(), d.id())
-	}
-
-	d.logger.Log("Starting", d.Name())
-
-	// Make sure the image is available locally; if not wait for it to download.
-	if err = d.prePullImage(ctx); err != nil {
-		return "", err
-	}
-
-	cmd := d.env.execContext(ctx, "docker", append([]string{"run", "-t"}, d.env.buildDockerRunArgs(d.name, d.ports, d.opts)...)...)
-	out := bytes.Buffer{}
-	l := &LinePrefixLogger{prefix: d.Name() + ": ", logger: d.logger}
-	ml := io.MultiWriter(&out, l)
-
-	cmd.Stdout = ml
-	cmd.Stderr = ml
-	err = cmd.Run()
-	return strings.TrimSuffix(strings.TrimSuffix(out.String(), "\n"), "\r"), err
-}
-
 // Start starts runnable.
 func (d *dockerRunnable) Start() (err error) {
 	if d.IsRunning() {
@@ -506,7 +472,7 @@ func (d *dockerRunnable) Endpoint(portName string) string {
 		return ""
 	}
 
-	// Do not use "localhost" cause it doesn't work with the AWS DynamoDB client.
+	// Do not use "localhost", because it doesn't work with the AWS DynamoDB client.
 	return fmt.Sprintf("127.0.0.1:%d", localPort)
 }
 
@@ -633,27 +599,26 @@ func (d *dockerRunnable) WaitReady() (err error) {
 	return errors.Wrapf(err, "the service %s is not ready", d.Name())
 }
 
-// Exec runs the provided command against a the docker container specified by this
-// service. It returns the stdout, stderr, and error response from attempting
-// to run the command.
-func (d *dockerRunnable) Exec(command Command) (string, string, error) {
+// Exec runs the provided command against the docker container specified by this
+// service.
+func (d *dockerRunnable) Exec(command Command, opts ...ExecOption) error {
 	if !d.IsRunning() {
-		return "", "", errors.Errorf("service %s is stopped", d.Name())
+		return errors.Errorf("service %s is stopped", d.Name())
+	}
+
+	l := &LinePrefixLogger{prefix: d.Name() + "-exec: ", logger: d.logger}
+	o := ExecOptions{Stdout: l, Stderr: l}
+	for _, opt := range opts {
+		opt(&o)
 	}
 
 	args := []string{"exec", d.containerName()}
 	args = append(args, command.Cmd)
 	args = append(args, command.Args...)
 	cmd := d.env.exec("docker", args...)
-
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	return stdout.String(), stderr.String(), err
+	cmd.Stdout = o.Stdout
+	cmd.Stderr = o.Stderr
+	return cmd.Run()
 }
 
 func (e *DockerEnvironment) existDockerNetwork() (bool, error) {
