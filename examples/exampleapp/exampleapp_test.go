@@ -32,7 +32,7 @@ func TestExampleApp(t *testing.T) {
 
 	testutil.Ok(t, e2e.StartAndWaitReady(p1, p2))
 
-	// Ensure that Prometheus already scraped something.
+	// Ensure that Prometheis already scraped something.
 	testutil.Ok(t, p1.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
 	testutil.Ok(t, p2.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
 
