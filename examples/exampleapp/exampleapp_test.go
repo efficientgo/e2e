@@ -65,7 +65,8 @@ scrape_configs:
 				Min:        1 * time.Second,
 				Max:        10 * time.Second,
 				MaxRetries: 100,
-			})),
+			}),
+		e2e.WaitMissingMetrics()),
 	)
 
 	// Now opening Prometheus in browser as well.
