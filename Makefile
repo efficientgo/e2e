@@ -76,7 +76,7 @@ format: $(GOIMPORTS)
 test: ## Runs all Go unit tests.
 	@echo ">> running tests for all modules: $(MODULES)"
 	for dir in $(MODULES) ; do \
-		cd $${dir} && go test -v -race ./...; \
+		cd $${dir} && go test -v -race $(go list ./... | grep -v examples/exampleapp); \
 	done
 
 .PHONY: run-example
