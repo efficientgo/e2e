@@ -18,9 +18,9 @@ import (
 func TestExampleApp(t *testing.T) {
 	// Start a new Docker environment.
 	e, err := e2e.NewDockerEnvironment("e2e_example_app")
-	testutil.Ok(t, err)
 	// Make sure resources are cleaned up.
 	t.Cleanup(e.Close)
+	testutil.Ok(t, err)
 
 	fmt.Println("=== Start example application...")
 	app := e2e.NewInstrumentedRunnable(e, "example_app").
