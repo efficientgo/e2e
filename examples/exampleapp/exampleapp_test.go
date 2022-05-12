@@ -43,7 +43,7 @@ scrape_configs:
     action: drop
 `, app.InternalEndpoint("http"))
 
-	fmt.Println("=== Start 2 Prometheis")
+	fmt.Println("=== Start Prometheus")
 	// Create Prometheus instance and wait for it to be ready.
 	p1 := e2edb.NewPrometheus(e, "prometheus-1")
 	testutil.Ok(t, p1.SetConfig(config))
@@ -52,7 +52,7 @@ scrape_configs:
 	// Ensure that Prometheis already scraped something.
 	testutil.Ok(t, p1.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
 
-	// Open example app url
+	// Open example in browser.
 	exampleAppURL := fmt.Sprintf("http://%s", app.Endpoint("http"))
 	testutil.Ok(t, e2einteractive.OpenInBrowser(exampleAppURL))
 
@@ -68,9 +68,11 @@ scrape_configs:
 			})),
 	)
 
+	// Now opening Prometheus in browser as well.
 	prometheusURL := fmt.Sprintf("http://%s", p1.Endpoint("http"))
 	testutil.Ok(t, e2einteractive.OpenInBrowser(prometheusURL))
 
+	// We're all done!
 	fmt.Println("=== Setup finished!")
 	fmt.Printf("=== Example application: %s\n", app.Endpoint("http"))
 
