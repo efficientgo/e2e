@@ -87,7 +87,7 @@ run-example: ## Runs our standalone Thanos example using e2e.
 .PHONY: run-example-app
 run-example-app:
 	@echo ">> running example application"
-	cd examples/exampleapp && go test -v .
+	cd examples/exampleapp && go test -v -count=1 .
 
 .PHONY: check-git
 check-git:
