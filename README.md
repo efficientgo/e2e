@@ -8,14 +8,14 @@ Go Module providing robust framework for running complex workload scenarios in i
 
 * Ability to schedule isolated processes programmatically from single process on single machine.
 * Focus on cluster workloads, cloud native services and microservices.
-* Developer scenarios in mind e.g preserving scenario readability, Go unit test integration.
+* Developer scenarios in mind - e.g preserving scenario readability, Go unit test integration.
 * Metric monitoring as the first citizen. Assert on Prometheus metric values during test scenarios or check overall performance characteristics.
 
 ## Usage Models
 
 There are three main use cases envisioned for this Go module:
 
-* *Unit test use* ([see example](examples/thanos/unittest_test.go)). Use `e2e` in unit tests to quickly run complex test scenarios involving many container services. This was the main reason we created this module. You can check usage of it in [Cortex](https://github.com/cortexproject/cortex/tree/main/integration) and [Thanos](https://github.com/thanos-io/thanos/tree/main/test/e2e) projects.
+* *e2e test use* ([see example](examples/thanos/e2etest_test.go)). Use `e2e` in e2e tests to quickly run complex test scenarios involving many container services. This was the main reason we created this module. You can check usage of it in [Cortex](https://github.com/cortexproject/cortex/tree/master/integration) and [Thanos](https://github.com/thanos-io/thanos/tree/main/test/e2e) projects.
 * *Standalone use* ([see example](examples/thanos/standalone.go)). Use `e2e` to run setups in interactive mode where you spin up workloads as you want *programmatically* and poke with it on your own using your browser or other tools. No longer need to deploy full Kubernetes or external machines.
 * *Benchmark use* ([see example](examples/thanos/benchmark_test.go)). Use `e2e` in local Go benchmarks when your code depends on external services with ease.
 
@@ -23,18 +23,19 @@ There are three main use cases envisioned for this Go module:
 
 Let's go through an example leveraging `go test` flow:
 
-1. Get `e2e` Go module to your `go.mod` using `go get github.com/efficientgo/e2e`.
-2. Implement test. Start by creating environment. Currently `e2e` supports Docker environment only. Use unique name for all your tests. It's recommended to keep it stable so resources are consistently cleaned.
+1. Get the `e2e` Go module to your `go.mod` using `go get github.com/efficientgo/e2e`.
+2. Implement a test. Start by creating an environment. Currently `e2e` supports Docker environment only. Use a unique name for all of your tests. It's recommended to keep it stable so resources are consistently cleaned.
 
-   ```go mdox-exec="sed -n '22,26p' examples/thanos/unittest_test.go"
+   ```go mdox-exec="sed -n '22,26p' examples/thanos/e2etest_test.go"
 
    	// Start isolated environment with given ref.
    	e, err := e2e.NewDockerEnvironment("e2e_example")
-   	testutil.Ok(t, err)
    	// Make sure resources (e.g docker containers, network, dir) are cleaned.
+    t.Cleanup(e.Close)
+   	testutil.Ok(t, err)
    ```
 
-3. Implement the workload by embedding `e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in [e2edb](db/) package. For example implementing function that schedules Jaeger with our desired configuration could look like this:
+3. Implement the workload by embedding `e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in [e2edb](db/) package. For example implementing a function that schedules Jaeger with our desired configuration could look like this:
 
    ```go mdox-exec="sed -n '35,42p' examples/thanos/standalone.go"
    	// Setup Jaeger for example purposes, on how easy is to setup tracing pipeline in e2e framework.
@@ -49,7 +50,7 @@ Let's go through an example leveraging `go test` flow:
 
 4. Program your scenario as you want. You can start, wait for their readiness, stop, check their metrics and use their network endpoints from both unit test (`Endpoint`) as well as within each workload (`InternalEndpoint`). You can also access workload directory. There is a shared directory across all workloads. Check `Dir` and `InternalDir` runnable methods.
 
-   ```go mdox-exec="sed -n '28,93p' examples/thanos/unittest_test.go"
+   ```go mdox-exec="sed -n '28,93p' examples/thanos/e2etest_test.go"
 
    	// Create structs for Prometheus containers scraping itself.
    	p1 := e2edb.NewPrometheus(e, "prometheus-1")
@@ -120,7 +121,7 @@ Let's go through an example leveraging `go test` flow:
 
 ### Interactive
 
-It is often the case we want to pause e2e test in desired moment so we can manually play with the scenario in progress. This is as easy as using `e2einteractive` package to pause the setup until you enter printed address in your browser. Use following code to pring address to hit and pause until it's getting hit.
+It is often the case we want to pause e2e test in desired moment, so we can manually play with the scenario in progress. This is as easy as using `e2einteractive` package to pause the setup until you enter printed address in your browser. Use following code to print the address to hit and pause until it's getting hit.
 
 ```go
 err := e2einteractive.RunUntilEndpointHit()
@@ -128,7 +129,7 @@ err := e2einteractive.RunUntilEndpointHit()
 
 ### Monitoring
 
-Each instrumented workload have programmatic access to latest metrics with `WaitSumMetricsWithOptions` methods family. Yet, especially for standalone mode it's often useful to query and visualisate all metrics provided by your services/runnables using PromQL. In order to do so just start monitoring from `e2emontioring` package:
+Each instrumented workload have programmatic access to the latest metrics with `WaitSumMetricsWithOptions` methods family. Yet, especially for standalone mode it's often useful to query and visualise all metrics provided by your services/runnables using PromQL. In order to do so just start monitoring from `e2emontioring` package:
 
 ```go
 mon, err := e2emonitoring.Start(e)
@@ -143,7 +144,7 @@ This will start Prometheus with automatic discovery for every new and old instru
 		return errors.Wrap(err, "open monitoring UI in browser")
 ```
 
-To see how it works in practice run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, three UIs should show in your browser. Thanos one, monitoring (Prometheus) one and tracing (Jaeger) one. In monitoring UI you can then e.g query docker container metrics using `container_memory_working_set_bytes{id!="/"}` metric e.g:
+To see how it works in practice, run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, three UIs should show in your browser. Thanos one, monitoring (Prometheus) one and tracing (Jaeger) one. In monitoring UI you can then e.g. query docker container metrics using `container_memory_working_set_bytes{id!="/"}` metric e.g:
 
 ![mem metric](monitoring.png)
 
