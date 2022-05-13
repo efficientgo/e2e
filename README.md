@@ -30,9 +30,8 @@ Let's go through an example leveraging the `go test` flow:
 
    	// Start isolated environment with given ref.
    	e, err := e2e.NewDockerEnvironment("e2e_example")
-   	// Make sure resources (e.g docker containers, network, dir) are cleaned.
-   	t.Cleanup(e.Close)
    	testutil.Ok(t, err)
+   	// Make sure resources (e.g docker containers, network, dir) are cleaned.
    ```
 
 3. Implement the workload by embedding `e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in the [e2edb](db/) package. For example implementing a function that schedules Jaeger with our desired configuration could look like this:
