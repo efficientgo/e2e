@@ -6,9 +6,9 @@ Go Module providing robust framework for running complex workload scenarios in i
 
 ## What are the goals?
 
-* Ability to schedule isolated processes programmatically from single process on single machine.
+* Ability to schedule isolated processes programmatically from a single process on a single machine.
 * Focus on cluster workloads, cloud native services and microservices.
-* Developer scenarios in mind - e.g preserving scenario readability, Go unit test integration.
+* Developer scenarios in mind - e.g. preserving scenario readability and integration with the Go test ecosystem.
 * Metric monitoring as the first citizen. Assert on Prometheus metric values during test scenarios or check overall performance characteristics.
 
 ## Usage Models
@@ -21,7 +21,7 @@ There are three main use cases envisioned for this Go module:
 
 ### Getting Started
 
-Let's go through an example leveraging `go test` flow:
+Let's go through an example leveraging the `go test` flow:
 
 1. Get the `e2e` Go module to your `go.mod` using `go get github.com/efficientgo/e2e`.
 2. Implement a test. Start by creating an environment. Currently `e2e` supports Docker environment only. Use a unique name for all of your tests. It's recommended to keep it stable so resources are consistently cleaned.
@@ -31,11 +31,11 @@ Let's go through an example leveraging `go test` flow:
    	// Start isolated environment with given ref.
    	e, err := e2e.NewDockerEnvironment("e2e_example")
    	// Make sure resources (e.g docker containers, network, dir) are cleaned.
-    t.Cleanup(e.Close)
+   	t.Cleanup(e.Close)
    	testutil.Ok(t, err)
    ```
 
-3. Implement the workload by embedding `e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in [e2edb](db/) package. For example implementing a function that schedules Jaeger with our desired configuration could look like this:
+3. Implement the workload by embedding `e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in the [e2edb](db/) package. For example implementing a function that schedules Jaeger with our desired configuration could look like this:
 
    ```go mdox-exec="sed -n '35,42p' examples/thanos/standalone.go"
    	// Setup Jaeger for example purposes, on how easy is to setup tracing pipeline in e2e framework.
@@ -121,7 +121,7 @@ Let's go through an example leveraging `go test` flow:
 
 ### Interactive
 
-It is often the case we want to pause e2e test in desired moment, so we can manually play with the scenario in progress. This is as easy as using `e2einteractive` package to pause the setup until you enter printed address in your browser. Use following code to print the address to hit and pause until it's getting hit.
+It is often the case we want to pause e2e test in a desired moment, so we can manually play with the scenario in progress. This is as easy as using the `e2einteractive` package to pause the setup until you enter the printed address in your browser. Use the following code to print the address to hit and pause until it's getting hit.
 
 ```go
 err := e2einteractive.RunUntilEndpointHit()
@@ -129,13 +129,13 @@ err := e2einteractive.RunUntilEndpointHit()
 
 ### Monitoring
 
-Each instrumented workload have programmatic access to the latest metrics with `WaitSumMetricsWithOptions` methods family. Yet, especially for standalone mode it's often useful to query and visualise all metrics provided by your services/runnables using PromQL. In order to do so just start monitoring from `e2emontioring` package:
+Each instrumented workload have programmatic access to the latest metrics with `WaitSumMetricsWithOptions` methods family. Yet, especially for standalone mode it's often useful to query and visualise all metrics provided by your services/runnables using PromQL. In order to do so just start monitoring from `e2emonitoring` package:
 
 ```go
 mon, err := e2emonitoring.Start(e)
 ```
 
-This will start Prometheus with automatic discovery for every new and old instrumented runnables being scraped. It also runs cadvisor that monitors docker itself if `env.DockerEnvironment` is started and show generic performance metrics per container (e.g `container_memory_rss`). Run `OpenUserInterfaceInBrowser()` to open Prometheus UI in browser.
+This will start Prometheus with automatic discovery for every new and old instrumented runnables being scraped. It also runs cadvisor that monitors docker itself if `env.DockerEnvironment` is started and shows generic performance metrics per container (e.g `container_memory_rss`). Run `OpenUserInterfaceInBrowser()` to open the Prometheus UI in the browser.
 
 ```go mdox-exec="sed -n '83,86p' examples/thanos/standalone.go"
 	}
@@ -144,15 +144,15 @@ This will start Prometheus with automatic discovery for every new and old instru
 		return errors.Wrap(err, "open monitoring UI in browser")
 ```
 
-To see how it works in practice, run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, three UIs should show in your browser. Thanos one, monitoring (Prometheus) one and tracing (Jaeger) one. In monitoring UI you can then e.g. query docker container metrics using `container_memory_working_set_bytes{id!="/"}` metric e.g:
+To see how it works in practice, run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, three UIs should show in your browser. Thanos one, monitoring (Prometheus) one and tracing (Jaeger) one. In monitoring UI you can then e.g. query docker container metrics using `container_memory_working_set_bytes{id!="/"}` metric:
 
 ![mem metric](monitoring.png)
 
-> NOTE: Due to cgroup modifications and using advanced docker features, this might behave different on non Linux platforms. Let us know in the issue if you encounter any issue on Mac or Windows and help us to add support for those operating systems!
+> NOTE: Due to cgroup modifications and using advanced docker features, this might behave different on non-Linux platforms. Let us know in the issue if you encounter any issue on Mac or Windows and help us to add support for those operating systems!
 
 #### Bonus: Monitoring performance of e2e process itself.
 
-It's common pattern that you want to schedule some containers but also, you might want to monitor some local code you just wrote. For this you can run your local code in and ad-hoc container using `e2e.Containerize()`:
+It's common pattern that you want to schedule some containers but also, you might want to monitor a local code you just wrote. For this you can run your local code in an ad-hoc container using `e2e.Containerize()`:
 
 ```go
 	l, err := e2e.Containerize(e, "run", Run)
@@ -178,7 +178,7 @@ This will run your code in a container allowing to use the same monitoring metho
 
 #### Can't create docker network
 
-If you see output like below:
+If you see an output like the one below:
 
 ```bash
 18:09:11 dockerEnv: [docker ps -a --quiet --filter network=kubelet]
@@ -187,7 +187,7 @@ If you see output like below:
 18:09:11 Error response from daemon: could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network
 ```
 
-The first potential reasons is that this command often does not work if you have VPN client working like `openvpn`, `expresvpn`, `nordvpn` etc. Unfortunately the fastest solution is to turn off the VPN for the duration of test. Any other method is quite tedious and requires docker
+The first potential reasons is that this command often does not work if you have VPN client working like `openvpn`, `expressvpn`, `nordvpn` etc. Unfortunately the fastest solution is to turn off the VPN for the duration of test.
 
 If that is not the reason, consider pruning your docker networks. You might have leftovers from previous runs (although in successful runs, `e2e` cleans those).
 
