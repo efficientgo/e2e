@@ -76,13 +76,18 @@ format: $(GOIMPORTS)
 test: ## Runs all Go unit tests.
 	@echo ">> running tests for all modules: $(MODULES)"
 	for dir in $(MODULES) ; do \
-		cd $${dir} && go test -v -race ./...; \
+		cd $${dir} && go test -v -race $(go list ./... | grep -v examples/exampleapp); \
 	done
 
 .PHONY: run-example
 run-example: ## Runs our standalone Thanos example using e2e.
 	@echo ">> running example"
 	cd examples/thanos && go run .
+
+.PHONY: run-example-app
+run-example-app:
+	@echo ">> running example application"
+	cd examples/exampleapp && go test -v -count=1 .
 
 .PHONY: check-git
 check-git:
