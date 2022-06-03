@@ -173,3 +173,52 @@ metric_b 1000
 	})
 	testutil.Ok(t, s.WaitSumMetrics(Equals(math.NaN()), "metric_a"))
 }
+
+func TestWaitSumMetric_DoesNotWaitForever(t *testing.T) {
+	// Listen on a random port before starting the HTTP server, to
+	// make sure the port is already open when we'll call WaitSumMetric()
+	// the first time (this avoid flaky tests).
+	ln, err := net.Listen("tcp", "localhost:0")
+	testutil.Ok(t, err)
+	defer ln.Close()
+
+	// Get the port.
+	_, addrPort, err := net.SplitHostPort(ln.Addr().String())
+	testutil.Ok(t, err)
+
+	port, err := strconv.Atoi(addrPort)
+	testutil.Ok(t, err)
+
+	// Start an HTTP server exposing the metrics.
+	srv := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`
+# HELP metric_c cheescake
+# TYPE metric_c GAUGE
+metric_c 20
+`))
+		}),
+	}
+	defer srv.Close()
+
+	go func() {
+		_ = srv.Serve(ln)
+	}()
+
+	r := &dockerRunnable{
+		hostPorts:       map[string]int{"http": port},
+		usedNetworkName: "hack",
+	}
+	s := &instrumentedRunnable{
+		metricPortName: "http",
+		runnable:       r,
+		Linkable:       r,
+	}
+
+	s.waitBackoff = backoff.New(context.Background(), backoff.Config{
+		Min:        300 * time.Millisecond,
+		Max:        600 * time.Millisecond,
+		MaxRetries: 50,
+	})
+	testutil.NotOk(t, s.WaitSumMetricsWithOptions(Equals(1), []string{"metric_a"}, WaitMissingMetrics()))
+}

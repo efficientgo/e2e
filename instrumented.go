@@ -169,6 +169,7 @@ func (r *instrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExp
 	for metricsWaitBackoff.Reset(); metricsWaitBackoff.Ongoing(); {
 		sums, err = r.SumMetrics(metricNames, opts...)
 		if options.waitMissingMetrics && errors.Is(err, errMissingMetric) {
+			metricsWaitBackoff.Wait()
 			continue
 		}
 		if err != nil {
