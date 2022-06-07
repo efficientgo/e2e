@@ -57,6 +57,7 @@ func (r *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected Metri
 	for r.backoff.Reset(); r.backoff.Ongoing(); {
 		sums, err = r.SumMetrics(metricNames, opts...)
 		if options.waitMissingMetrics && errors.Is(err, errMissingMetric) {
+			r.backoff.Wait()
 			continue
 		}
 		if err != nil {

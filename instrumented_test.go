@@ -95,6 +95,7 @@ metric_b_summary_count 1
 		MaxRetries: 1,
 	}
 	testutil.NotOk(t, s.WaitSumMetricsWithOptions(Equals(16), []string{"metric_a"}, WithWaitBackoff(&noRetryWaitBackoff)))
+	testutil.NotOk(t, s.WaitSumMetricsWithOptions(Equals(16), []string{"unknown_metric"}, WaitMissingMetrics()))
 
 	testutil.Ok(t, s.WaitSumMetricsWithOptions(Equals(1000), []string{"metric_b"}, WithWaitBackoff(&noRetryWaitBackoff)))
 	testutil.Ok(t, s.WaitSumMetricsWithOptions(Equals(1020), []string{"metric_b_counter"}, WithWaitBackoff(&noRetryWaitBackoff)))
