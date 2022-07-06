@@ -4,6 +4,7 @@
 package e2emonitoring
 
 import (
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/efficientgo/e2e/monitoring/promconfig"
 	sdconfig "github.com/efficientgo/e2e/monitoring/promconfig/discovery/config"
 	"github.com/efficientgo/e2e/monitoring/promconfig/discovery/targetgroup"
+	"github.com/efficientgo/tools/core/pkg/errcapture"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -203,6 +205,30 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 
 func (s *Service) OpenUserInterfaceInBrowser(paths ...string) error {
 	return e2einteractive.OpenInBrowser("http://" + s.p.Endpoint(e2edb.AccessPortName) + strings.Join(paths, "/"))
+}
+
+// InstantQuery evaluates instant PromQL queries against monitoring service.
+func (s *Service) InstantQuery(query string) (string, error) {
+	if !s.p.IsRunning() {
+		return "", errors.Errorf("%s is not running", s.p.Name())
+	}
+
+	res, err := (&http.Client{}).Get("http://" + s.p.Endpoint(e2edb.AccessPortName) + "/api/v1/query?query=" + query)
+	if err != nil {
+		return "", err
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return "", errors.Errorf("unexpected status code %d while fetching metrics", res.StatusCode)
+	}
+	defer errcapture.ExhaustClose(&err, res.Body, "metrics response")
+
+	body, err := ioutil.ReadAll(res.Body)
+	return string(body), err
+}
+
+func (s *Service) GetMonitoringRunnable() e2e.InstrumentedRunnable {
+	return s.p.InstrumentedRunnable
 }
 
 func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) e2e.InstrumentedRunnable {
