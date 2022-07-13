@@ -118,8 +118,9 @@ func (l *listener) OnRunnableChange(started []e2e.Runnable) error {
 }
 
 type opt struct {
-	scrapeInterval time.Duration
-	customRegistry *prometheus.Registry
+	scrapeInterval  time.Duration
+	customRegistry  *prometheus.Registry
+	customPromImage string
 }
 
 // WithScrapeInterval changes how often metrics are scrape by Prometheus. 5s by default.
@@ -135,6 +136,13 @@ func WithScrapeInterval(interval time.Duration) func(*opt) {
 func WithCustomRegistry(reg *prometheus.Registry) func(*opt) {
 	return func(o *opt) {
 		o.customRegistry = reg
+	}
+}
+
+// WithPrometheusImage allows injecting custom Prometheus docker image to use as scraper and queryable.
+func WithPrometheusImage(image string) func(*opt) {
+	return func(o *opt) {
+		o.customPromImage = image
 	}
 }
 
@@ -177,7 +185,11 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	go func() { _ = s.Serve(list) }()
 	env.AddCloser(func() { _ = s.Close() })
 
-	p := e2edb.NewPrometheus(env, "monitoring")
+	var dbOpts []e2edb.Option
+	if opt.customPromImage != "" {
+		dbOpts = append(dbOpts, e2edb.WithImage(opt.customPromImage))
+	}
+	p := e2edb.NewPrometheus(env, "monitoring", dbOpts...)
 
 	_, port, err := net.SplitHostPort(list.Addr().String())
 	if err != nil {
