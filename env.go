@@ -77,6 +77,9 @@ type StartOptions struct {
 	UserNs           string
 	Privileged       bool
 	Capabilities     []RunnableCapabilities
+
+	LimitMemoryBytes uint
+	LimitCPUs        float64
 }
 
 type RunnableCapabilities string

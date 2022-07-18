@@ -258,6 +258,14 @@ func (e *DockerEnvironment) buildDockerRunArgs(name string, ports map[string]int
 		args = append(args, "--cap-add", string(c))
 	}
 
+	if opts.LimitMemoryBytes > 0 {
+		args = append(args, "--memory", fmt.Sprintf("%db", opts.LimitMemoryBytes))
+	}
+
+	if opts.LimitCPUs > 0 {
+		args = append(args, "--cpus", fmt.Sprintf("%f", opts.LimitCPUs))
+	}
+
 	// Published ports.
 	for _, port := range ports {
 		args = append(args, "-p", strconv.Itoa(port))
