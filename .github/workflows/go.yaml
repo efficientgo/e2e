@@ -3,7 +3,7 @@ name: go
 on:
   push:
     branches:
-      - master
+      - main
     tags:
   pull_request:
 
@@ -34,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.16.x']
+        go: ["1.16.x"]
         platform: [ubuntu-latest, macos-latest]
 
     name: Unit tests on Go ${{ matrix.go }} ${{ matrix.platform }}
@@ -47,9 +47,11 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
 
-      - name: Install Docker
+      - name: Install docker - MacOS
         if: runner.os == 'macOS'
-        uses: docker-practice/actions-setup-docker@master
+        run: |
+          brew install docker colima
+          colima start
 
       - uses: actions/cache@v1
         with:

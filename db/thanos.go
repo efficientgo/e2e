@@ -13,7 +13,7 @@ import (
 )
 
 func NewThanosQuerier(env e2e.Environment, name string, endpointsAddresses []string, opts ...Option) e2e.InstrumentedRunnable {
-	o := options{image: "quay.io/thanos/thanos:v0.21.1"}
+	o := options{image: "quay.io/thanos/thanos:v0.27.0"}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -47,7 +47,7 @@ func NewThanosQuerier(env e2e.Environment, name string, endpointsAddresses []str
 }
 
 func NewThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable, opts ...Option) e2e.InstrumentedRunnable {
-	o := options{image: "quay.io/thanos/thanos:v0.21.1"}
+	o := options{image: "quay.io/thanos/thanos:v0.27.0"}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -77,7 +77,7 @@ func NewThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable, opts 
 }
 
 func NewThanosStore(env e2e.Environment, name string, bktConfigYaml []byte, opts ...Option) e2e.InstrumentedRunnable {
-	o := options{image: "quay.io/thanos/thanos:v0.21.1"}
+	o := options{image: "quay.io/thanos/thanos:v0.27.0"}
 	for _, opt := range opts {
 		opt(&o)
 	}
