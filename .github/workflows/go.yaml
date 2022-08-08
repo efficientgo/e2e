@@ -50,11 +50,8 @@ jobs:
       - name: Install docker - MacOS
         if: matrix.os == 'macos-latest'
         run: |
-          brew install --cask docker
-          sudo /Applications/Docker.app/Contents/MacOS/Docker --unattended --install-privileged-components
-          open -a /Applications/Docker.app --args --unattended --accept-license
-          while ! /Applications/Docker.app/Contents/Resources/bin/docker info &>/dev/null; do sleep 1; done
-          docker --version
+          brew install docker colima
+          colima start
 
       - uses: actions/cache@v1
         with:
