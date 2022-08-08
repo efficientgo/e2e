@@ -48,7 +48,7 @@ jobs:
           go-version: ${{ matrix.go }}
 
       - name: Install docker - MacOS
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         run: |
           brew install docker colima
           colima start
