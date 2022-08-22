@@ -25,7 +25,7 @@ import (
 
 const (
 	dockerLocalSharedDir   = "/shared"
-	dockerMacOSGatewayAddr = "gateway.docker.internal"
+	dockerMacOSGatewayAddr = "host.docker.internal"
 )
 
 var (
