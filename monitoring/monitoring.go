@@ -251,7 +251,7 @@ func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) e2e
 			"--docker_only=true",
 			"--raw_cgroup_prefix_whitelist="+strings.Join(cgroupPrefixes, ","),
 		),
-		Image: "gcr.io/cadvisor/cadvisor:v0.44.0",
+		Image: "gcr.io/cadvisor/cadvisor:v0.45.0",
 		// See https://github.com/google/cadvisor/blob/master/docs/running.md.
 		Volumes: []string{
 			"/:/rootfs:ro",
