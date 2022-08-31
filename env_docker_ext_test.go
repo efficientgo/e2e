@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/efficientgo/core/testutil"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
-	"github.com/efficientgo/tools/core/pkg/testutil"
 )
 
 func wgetFlagsCmd(hostPort string) e2e.Command {
@@ -22,7 +22,7 @@ func wgetFlagsCmd(hostPort string) e2e.Command {
 func TestDockerEnvironment(t *testing.T) {
 	t.Parallel()
 
-	e, err := e2e.NewDockerEnvironment("e2e_lifecycle")
+	e, err := e2e.New()
 	testutil.Ok(t, err)
 	t.Cleanup(e.Close)
 
@@ -30,7 +30,7 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Equals(t, "prometheus-1", p1.Name())
 	testutil.Equals(t, filepath.Join(e.SharedDir(), "data", p1.Name()), p1.Dir())
 	testutil.Equals(t, filepath.Join("/shared", "data", p1.Name()), p1.InternalDir())
-	testutil.Equals(t, "e2e_lifecycle-prometheus-1:9090", p1.InternalEndpoint("http"))
+	testutil.Equals(t, "e2e-80D5E99C3992-prometheus-1:9090", p1.InternalEndpoint("http"))
 	testutil.Equals(t, "", p1.InternalEndpoint("not-existing"))
 	testutil.Assert(t, !p1.IsRunning())
 
@@ -53,7 +53,7 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Equals(t, "prometheus-1", p1.Name())
 	testutil.Equals(t, filepath.Join(e.SharedDir(), "data", p1.Name()), p1.Dir())
 	testutil.Equals(t, filepath.Join("/shared", "data", p1.Name()), p1.InternalDir())
-	testutil.Equals(t, "e2e_lifecycle-prometheus-1:9090", p1.InternalEndpoint("http"))
+	testutil.Equals(t, "e2e-80D5E99C3992-prometheus-1:9090", p1.InternalEndpoint("http"))
 	testutil.Equals(t, "", p1.InternalEndpoint("not-existing"))
 	testutil.Assert(t, p1.IsRunning())
 

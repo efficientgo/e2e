@@ -6,8 +6,8 @@ package e2e
 import (
 	"testing"
 
-	"github.com/efficientgo/tools/core/pkg/testutil"
-	"github.com/pkg/errors"
+	"github.com/efficientgo/core/errors"
+	"github.com/efficientgo/core/testutil"
 )
 
 func TestGetDockerPortMapping(t *testing.T) {

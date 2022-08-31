@@ -29,7 +29,7 @@ Let's go through an example leveraging the `go test` flow:
    ```go mdox-exec="sed -n '22,26p' examples/thanos/e2etest_test.go"
 
    	// Start isolated environment with given ref.
-   	e, err := e2e.NewDockerEnvironment("e2e_example")
+   	e, err := e2e.New()
    	testutil.Ok(t, err)
    	// Make sure resources (e.g docker containers, network, dir) are cleaned.
    ```

@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/efficientgo/core/errcapture"
+	"github.com/efficientgo/core/errors"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
 	"github.com/efficientgo/e2e/monitoring/promconfig"
 	sdconfig "github.com/efficientgo/e2e/monitoring/promconfig/discovery/config"
 	"github.com/efficientgo/e2e/monitoring/promconfig/discovery/targetgroup"
-	"github.com/efficientgo/tools/core/pkg/errcapture"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -222,7 +222,7 @@ func (s *Service) OpenUserInterfaceInBrowser(paths ...string) error {
 // InstantQuery evaluates instant PromQL queries against monitoring service.
 func (s *Service) InstantQuery(query string) (string, error) {
 	if !s.p.IsRunning() {
-		return "", errors.Errorf("%s is not running", s.p.Name())
+		return "", errors.Newf("%s is not running", s.p.Name())
 	}
 
 	res, err := (&http.Client{}).Get("http://" + s.p.Endpoint(e2edb.AccessPortName) + "/api/v1/query?query=" + query)
@@ -231,7 +231,7 @@ func (s *Service) InstantQuery(query string) (string, error) {
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return "", errors.Errorf("unexpected status code %d while fetching metrics", res.StatusCode)
+		return "", errors.Newf("unexpected status code %d while fetching metrics", res.StatusCode)
 	}
 	defer errcapture.ExhaustClose(&err, res.Body, "metrics response")
 

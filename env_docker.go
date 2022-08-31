@@ -6,6 +6,7 @@ package e2e
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -19,8 +20,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/efficientgo/tools/core/pkg/backoff"
-	"github.com/pkg/errors"
+	"github.com/efficientgo/core/backoff"
+	"github.com/efficientgo/core/errors"
 )
 
 const (
@@ -51,18 +52,39 @@ type DockerEnvironment struct {
 	closed  bool
 }
 
+func generateName() (string, error) {
+	pc, _, _, ok := runtime.Caller(3)
+	if ok {
+		h := sha256.New()
+		h.Write([]byte(runtime.FuncForPC(pc).Name()))
+		return fmt.Sprintf("e2e-%X", h.Sum(nil))[:16], nil
+	}
+	// Fallback to randomized name.
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%X-%X-%X-%X-%X", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
+}
+
 // NewDockerEnvironment creates new, isolated docker environment.
-func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnvironment, error) {
+// The `name` option is now deprecated and is equivalent to `e2e.WithName()`. Feel free to leave it empty.
+// Deprecated: Use New instead.
+func NewDockerEnvironment(name string, opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
+	return New(append(opts, WithName(name))...)
+}
+
+// New creates new, isolated docker environment.
+func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 	e := environmentOptions{}
 	for _, o := range opts {
 		o(&e)
 	}
-	if name == "" {
-		b := make([]byte, 16)
-		if _, err := rand.Read(b); err != nil {
+	if e.name == "" {
+		e.name, err = generateName()
+		if err != nil {
 			return nil, err
 		}
-		name = fmt.Sprintf("%X-%X-%X-%X-%X", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 	}
 	if e.logger == nil {
 		e.logger = NewLogger(os.Stdout)
@@ -70,7 +92,7 @@ func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnviro
 
 	d := &DockerEnvironment{
 		logger:      e.logger,
-		networkName: name,
+		networkName: e.name,
 		verbose:     e.verbose,
 		registered:  map[string]struct{}{},
 	}
@@ -86,21 +108,21 @@ func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnviro
 	d.dir = dir
 
 	// Setup the docker network.
-	if out, err := d.exec("docker", "network", "create", "-d", "bridge", name).CombinedOutput(); err != nil {
+	if out, err := d.exec("docker", "network", "create", "-d", "bridge", d.networkName).CombinedOutput(); err != nil {
 		e.logger.Log(string(out))
 		d.Close()
-		return nil, errors.Wrapf(err, "create docker network '%s'", name)
+		return nil, errors.Wrapf(err, "create docker network '%s'", d.networkName)
 	}
 
 	switch runtime.GOOS {
 	case "darwin":
 		d.hostAddr = dockerMacOSGatewayAddr
 	default:
-		out, err := d.exec("docker", "network", "inspect", name).CombinedOutput()
+		out, err := d.exec("docker", "network", "inspect", d.networkName).CombinedOutput()
 		if err != nil {
 			e.logger.Log(string(out))
 			d.Close()
-			return nil, errors.Wrapf(err, "inspect docker network '%s'", name)
+			return nil, errors.Wrapf(err, "inspect docker network '%s'", d.networkName)
 		}
 
 		var inspectDetails []struct {
@@ -115,12 +137,12 @@ func NewDockerEnvironment(name string, opts ...EnvironmentOption) (*DockerEnviro
 		}
 
 		if len(inspectDetails) != 1 || len(inspectDetails[0].IPAM.Config) != 1 {
-			return nil, errors.Errorf("unexpected format of docker inspect; expected exactly one element in root and IPAM.Config, got %v", string(out))
+			return nil, errors.Newf("unexpected format of docker inspect; expected exactly one element in root and IPAM.Config, got %v", string(out))
 		}
 		d.hostAddr = inspectDetails[0].IPAM.Config[0].Gateway
 	}
 
-	return d, nil
+	return d, e.logger.Log("msg", "started docker environment", "name", d.networkName)
 }
 
 func (e *DockerEnvironment) HostAddr() string { return e.hostAddr }
@@ -136,7 +158,7 @@ func (e *DockerEnvironment) Runnable(name string) RunnableBuilder {
 	}
 
 	if e.isRegistered(name) {
-		return Errorer{name: name, err: errors.Errorf("there is already one runnable created with the same name %v", name)}
+		return Errorer{name: name, err: errors.Newf("there is already one runnable created with the same name %v", name)}
 	}
 
 	d := &dockerRunnable{
@@ -356,15 +378,15 @@ func (d *dockerRunnable) IsRunning() bool {
 // Start starts runnable.
 func (d *dockerRunnable) Start() (err error) {
 	if d.IsRunning() {
-		return errors.Errorf("%v is running. Stop or kill it first to restart.", d.Name())
+		return errors.Newf("%v is running. Stop or kill it first to restart.", d.Name())
 	}
 
 	i, ok := d.concreteType.(identificable)
 	if !ok {
-		return errors.Errorf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; not implementing identificable", d.concreteType)
+		return errors.Newf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; not implementing identificable", d.concreteType)
 	}
 	if i.id() != d.id() {
-		return errors.Errorf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; id %v, expected %v", d.concreteType, i.id(), d.id())
+		return errors.Newf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; id %v, expected %v", d.concreteType, i.id(), d.id())
 	}
 
 	d.logger.Log("Starting", d.Name())
@@ -426,7 +448,7 @@ func getDockerPortMapping(out []byte) (int, error) {
 	trimmed := strings.TrimSpace(string(out))
 	matches := dockerPortPattern.FindStringSubmatch(trimmed)
 	if len(matches) != 2 {
-		return 0, errors.Errorf("got unexpected output: %s", trimmed)
+		return 0, errors.Newf("got unexpected output: %s", trimmed)
 	}
 	return strconv.Atoi(matches[1])
 }
@@ -510,7 +532,7 @@ func dockerNetworkContainerHostPort(networkName, containerName string, port int)
 
 func (d *dockerRunnable) Ready() error {
 	if !d.IsRunning() {
-		return errors.Errorf("service %s is stopped", d.Name())
+		return errors.Newf("service %s is stopped", d.Name())
 	}
 
 	// Ensure the service has a readiness probe configure.
@@ -527,7 +549,7 @@ func (d *dockerRunnable) containerName() string {
 
 func (d *dockerRunnable) waitForRunning() (err error) {
 	if !d.IsRunning() {
-		return errors.Errorf("service %s is stopped", d.Name())
+		return errors.Newf("service %s is stopped", d.Name())
 	}
 
 	var out []byte
@@ -550,14 +572,14 @@ func (d *dockerRunnable) waitForRunning() (err error) {
 		}
 
 		if out == nil {
-			err = errors.Errorf("nil output")
+			err = errors.Newf("nil output")
 			d.waitBackoffReady.Wait()
 			continue
 		}
 
 		str := strings.TrimSpace(string(out))
 		if str != "true" {
-			err = errors.Errorf("unexpected output: %q", str)
+			err = errors.Newf("unexpected output: %q", str)
 			d.waitBackoffReady.Wait()
 			continue
 		}
@@ -573,7 +595,7 @@ func (d *dockerRunnable) waitForRunning() (err error) {
 
 func (d *dockerRunnable) prePullImage(ctx context.Context) (err error) {
 	if d.IsRunning() {
-		return errors.Errorf("service %s is running; expected stopped", d.Name())
+		return errors.Newf("service %s is running; expected stopped", d.Name())
 	}
 
 	if _, err = d.env.execContext(ctx, "docker", "image", "inspect", d.opts.Image).CombinedOutput(); err == nil {
@@ -593,7 +615,7 @@ func (d *dockerRunnable) prePullImage(ctx context.Context) (err error) {
 
 func (d *dockerRunnable) WaitReady() (err error) {
 	if !d.IsRunning() {
-		return errors.Errorf("service %s is stopped", d.Name())
+		return errors.Newf("service %s is stopped", d.Name())
 	}
 
 	for d.waitBackoffReady.Reset(); d.waitBackoffReady.Ongoing(); {
@@ -611,7 +633,7 @@ func (d *dockerRunnable) WaitReady() (err error) {
 // service.
 func (d *dockerRunnable) Exec(command Command, opts ...ExecOption) error {
 	if !d.IsRunning() {
-		return errors.Errorf("service %s is stopped", d.Name())
+		return errors.Newf("service %s is stopped", d.Name())
 	}
 
 	l := &LinePrefixLogger{prefix: d.Name() + "-exec: ", logger: d.logger}

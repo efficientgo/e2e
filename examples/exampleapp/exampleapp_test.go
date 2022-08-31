@@ -8,16 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/efficientgo/core/backoff"
+	"github.com/efficientgo/core/testutil"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
-	"github.com/efficientgo/tools/core/pkg/backoff"
-	"github.com/efficientgo/tools/core/pkg/testutil"
 )
 
 func TestExampleApp(t *testing.T) {
 	// Start a new Docker environment.
-	e, err := e2e.NewDockerEnvironment("e2e_example_app")
+	e, err := e2e.New()
 	// Make sure resources are cleaned up.
 	t.Cleanup(e.Close)
 	testutil.Ok(t, err)

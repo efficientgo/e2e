@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/efficientgo/core/testutil"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
-	"github.com/efficientgo/tools/core/pkg/testutil"
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
@@ -21,7 +21,7 @@ func TestExample(t *testing.T) {
 	t.Parallel() // We can run those tests in parallel (as long as host has enough CPU time).
 
 	// Start isolated environment with given ref.
-	e, err := e2e.NewDockerEnvironment("e2e_example")
+	e, err := e2e.New()
 	testutil.Ok(t, err)
 	// Make sure resources (e.g docker containers, network, dir) are cleaned.
 	t.Cleanup(e.Close)

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/efficientgo/tools/core/pkg/backoff"
-	"github.com/efficientgo/tools/core/pkg/testutil"
+	"github.com/efficientgo/core/backoff"
+	"github.com/efficientgo/core/testutil"
 )
 
 func TestWaitSumMetric(t *testing.T) {

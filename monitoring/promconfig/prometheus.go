@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/efficientgo/core/errors"
 	sdconfig "github.com/efficientgo/e2e/monitoring/promconfig/discovery/config"
-	"github.com/pkg/errors"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 )
@@ -141,7 +141,7 @@ func (a *RelabelAction) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		*a = act
 		return nil
 	}
-	return errors.Errorf("unknown relabel action %q", s)
+	return errors.Newf("unknown relabel action %q", s)
 }
 
 // RelabelConfig is the configuration for relabeling of target label sets.
