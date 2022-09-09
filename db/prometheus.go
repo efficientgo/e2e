@@ -5,7 +5,6 @@ package e2edb
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -43,7 +42,7 @@ scrape_configs:
     regex: '^.+:80$'
     action: drop
 `, name, f.InternalEndpoint("http"))
-	if err := ioutil.WriteFile(filepath.Join(f.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(f.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
 		return &Prometheus{InstrumentedRunnable: e2e.NewErrInstrumentedRunnable(name, errors.Wrap(err, "create prometheus config failed"))}
 	}
 
@@ -67,7 +66,7 @@ scrape_configs:
 }
 
 func (p *Prometheus) SetConfig(config string) error {
-	if err := ioutil.WriteFile(filepath.Join(p.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(p.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
 		return errors.Wrap(err, "creating prom config failed")
 	}
 

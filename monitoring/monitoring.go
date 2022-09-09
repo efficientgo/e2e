@@ -4,7 +4,7 @@
 package e2emonitoring
 
 import (
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -235,7 +235,7 @@ func (s *Service) InstantQuery(query string) (string, error) {
 	}
 	defer errcapture.ExhaustClose(&err, res.Body, "metrics response")
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	return string(body), err
 }
 

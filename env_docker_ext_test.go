@@ -5,7 +5,7 @@ package e2e_test
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -69,7 +69,7 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Ok(t, err)
 	defer resp.Body.Close()
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	testutil.Ok(t, err)
 	testutil.Equals(t, expectedFlagsOutputProm1, string(b))
 	testutil.Equals(t, "", p1.Endpoint("not-existing"))

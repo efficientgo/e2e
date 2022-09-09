@@ -6,7 +6,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -61,13 +60,13 @@ func Containerize(e Environment, name string, startFn func(context.Context) erro
 	}
 
 	// TODO(saswatamcode): Maybe we can do away with goModTmpl, and just run go mod init shim, go mod edit -replace %v=%v and go mod tidy here.
-	if err := ioutil.WriteFile(filepath.Join(dir, "go.mod"), []byte(fmt.Sprintf(goModTmpl, modulePath, modulePath, absModulePath)), os.ModePerm); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(fmt.Sprintf(goModTmpl, modulePath, modulePath, absModulePath)), os.ModePerm); err != nil {
 		return nil, err
 	}
-	if err := ioutil.WriteFile(filepath.Join(dir, "main.go"), []byte(fmt.Sprintf(mainFileTmpl, pkg, funcName)), os.ModePerm); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(fmt.Sprintf(mainFileTmpl, pkg, funcName)), os.ModePerm); err != nil {
 		return nil, err
 	}
-	if err := ioutil.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(dockerFile), os.ModePerm); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(dockerFile), os.ModePerm); err != nil {
 		return nil, err
 	}
 

@@ -6,7 +6,7 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -148,7 +148,7 @@ func (r *instrumentedRunnable) Metrics() (_ string, err error) {
 	}
 	defer errcapture.ExhaustClose(&err, res.Body, "metrics response")
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	return string(body), err
 }
 

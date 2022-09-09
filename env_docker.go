@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -696,7 +695,7 @@ func getTmpDirectory() (string, error) {
 		}
 	}
 
-	tmpDir, err := ioutil.TempDir(dir, "e2e_")
+	tmpDir, err := os.MkdirTemp(dir, "e2e_")
 	if err != nil {
 		return "", err
 	}
