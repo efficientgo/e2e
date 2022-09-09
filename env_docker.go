@@ -31,6 +31,7 @@ const (
 
 var (
 	dockerPortPattern = regexp.MustCompile(`^.*:(\d+)`)
+	envNamePattern    = regexp.MustCompile(`^[-a-zA-Z\d]{1,16}$`)
 
 	_ Environment = &DockerEnvironment{}
 )
@@ -67,6 +68,17 @@ func generateName() (string, error) {
 	return fmt.Sprintf("%X-%X-%X-%X-%X", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
 }
 
+func validateName(name string) error {
+	if len(name) < 1 && len(name) > 16 {
+		return errors.Newf("name can't be smaller than 1 and over 16 character long due to docker network name constraints, got: %v", name)
+	}
+	if !envNamePattern.MatchString(name) {
+		return errors.Newf("name can have only %v characters due to docker network name constraints, got: %v", envNamePattern.String(), name)
+
+	}
+	return nil
+}
+
 // NewDockerEnvironment creates new, isolated docker environment.
 // The `name` option is now deprecated and is equivalent to `e2e.WithName()`. Feel free to leave it empty.
 // Deprecated: Use New instead.
@@ -86,6 +98,10 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 			return nil, err
 		}
 	}
+	if err := validateName(e.name); err != nil {
+		return nil, err
+	}
+
 	if e.logger == nil {
 		e.logger = NewLogger(os.Stdout)
 	}

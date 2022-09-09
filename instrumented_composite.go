@@ -71,7 +71,7 @@ func (r *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected Metri
 		r.backoff.Wait()
 	}
 
-	return errors.Newf("unable to find metrics %s with expected values. Last error: %v. Last values: %v", metricNames, err, sums)
+	return errors.Wrapf(err, "unable to find metrics %s with expected values. Last values: %v", metricNames, sums)
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
