@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/efficientgo/e2e"
-	"github.com/pkg/errors"
 )
 
 type Prometheus struct {

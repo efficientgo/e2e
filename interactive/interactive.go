@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/pkg/errors"
+	"github.com/efficientgo/core/errors"
 )
 
 func OpenInBrowser(url string) error {
@@ -25,7 +25,7 @@ func OpenInBrowser(url string) error {
 	case "darwin":
 		err = exec.Command("open", url).Run()
 	default:
-		err = errors.Errorf("unsupported platform")
+		err = errors.New("unsupported platform")
 	}
 	return err
 }

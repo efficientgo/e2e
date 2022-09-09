@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/efficientgo/tools/core/pkg/backoff"
-	"github.com/efficientgo/tools/core/pkg/errcapture"
-	"github.com/pkg/errors"
+	"github.com/efficientgo/core/backoff"
+	"github.com/efficientgo/core/errcapture"
+	"github.com/efficientgo/core/errors"
 )
 
 // EnvironmentOption defined the signature of a function used to manipulate options.
@@ -26,6 +26,7 @@ type EnvironmentOption func(*environmentOptions)
 type environmentOptions struct {
 	logger  Logger
 	verbose bool
+	name    string
 }
 
 // WithLogger tells environment to use custom logger to default one (stdout).
@@ -39,6 +40,20 @@ func WithLogger(logger Logger) EnvironmentOption {
 func WithVerbose() EnvironmentOption {
 	return func(o *environmentOptions) {
 		o.verbose = true
+	}
+}
+
+// WithName injects custom name of environment which will be used as a network name.
+// If the name is not unique across different e2e environments ran at the same moment this will race them.
+// In the same time if name is unique across every environment run for the same test it won't be able
+// to easily clean up (so be reused) on the next run if the network was not cleaned properly.
+//
+// By default, it creates `e2e_<hash based on function name>` environment name.
+//
+// NOTE: Some restrictions apply. See https://stackoverflow.com/a/53478768.
+func WithName(name string) EnvironmentOption {
+	return func(o *environmentOptions) {
+		o.name = name
 	}
 }
 
@@ -285,7 +300,7 @@ func newHTTPReadinessProbe(portName, path, scheme string, expectedStatusRangeSta
 func (p *HTTPReadinessProbe) Ready(runnable Runnable) (err error) {
 	endpoint := runnable.Endpoint(p.portName)
 	if endpoint == "" {
-		return errors.Errorf("cannot get service endpoint for port %s", p.portName)
+		return errors.Newf("cannot get service endpoint for port %s", p.portName)
 	}
 	if endpoint == "stopped" {
 		return errors.New("service has stopped")
@@ -308,12 +323,12 @@ func (p *HTTPReadinessProbe) Ready(runnable Runnable) (err error) {
 
 	body, _ := ioutil.ReadAll(res.Body)
 	if res.StatusCode < p.expectedStatusRangeStart || res.StatusCode > p.expectedStatusRangeEnd {
-		return errors.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
+		return errors.Newf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
 	}
 
 	for _, expected := range p.expectedContent {
 		if !strings.Contains(string(body), expected) {
-			return errors.Errorf("expected body containing %s, got: %v", expected, string(body))
+			return errors.Newf("expected body containing %s, got: %v", expected, string(body))
 		}
 	}
 	return nil
@@ -333,7 +348,7 @@ func NewTCPReadinessProbe(portName string) *TCPReadinessProbe {
 func (p *TCPReadinessProbe) Ready(runnable Runnable) (err error) {
 	endpoint := runnable.Endpoint(p.portName)
 	if endpoint == "" {
-		return errors.Errorf("cannot get service endpoint for port %s", p.portName)
+		return errors.Newf("cannot get service endpoint for port %s", p.portName)
 	} else if endpoint == "stopped" {
 		return errors.New("service has stopped")
 	}

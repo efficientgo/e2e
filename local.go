@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/efficientgo/core/errors"
 )
 
 // Containerize inspects startFn and builds Go shim with local process endpoint that imports given `startFn` function.
@@ -50,7 +50,7 @@ func Containerize(e Environment, name string, startFn func(context.Context) erro
 	}
 
 	if len(absModulePath) == 0 {
-		return nil, errors.Errorf("not a Go module %v", wd)
+		return nil, errors.Newf("not a Go module %v", wd)
 	}
 
 	f := NewInstrumentedRunnable(e, name).WithPorts(map[string]int{"http": 80}, "http").Future()

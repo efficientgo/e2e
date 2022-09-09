@@ -9,18 +9,18 @@ import (
 	"log"
 	"syscall"
 
+	"github.com/efficientgo/core/errors"
+	"github.com/efficientgo/core/merrors"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
 	e2emonitoring "github.com/efficientgo/e2e/monitoring"
-	"github.com/efficientgo/tools/core/pkg/merrors"
 	"github.com/oklog/run"
-	"github.com/pkg/errors"
 )
 
 func deployWithMonitoring(ctx context.Context) error {
 	// Start isolated environment with given ref.
-	e, err := e2e.NewDockerEnvironment("e2e_example")
+	e, err := e2e.New()
 	if err != nil {
 		return err
 	}

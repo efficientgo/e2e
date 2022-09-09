@@ -7,8 +7,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/efficientgo/tools/core/pkg/backoff"
-	"github.com/pkg/errors"
+	"github.com/efficientgo/core/backoff"
+	"github.com/efficientgo/core/errors"
 )
 
 // CompositeInstrumentedRunnable abstract an higher-level service composed by more than one InstrumentedRunnable.
@@ -71,7 +71,7 @@ func (r *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected Metri
 		r.backoff.Wait()
 	}
 
-	return errors.Errorf("unable to find metrics %s with expected values. Last error: %v. Last values: %v", metricNames, err, sums)
+	return errors.Wrapf(err, "unable to find metrics %s with expected values. Last values: %v", metricNames, sums)
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
@@ -85,7 +85,7 @@ func (r *CompositeInstrumentedRunnable) SumMetrics(metricNames []string, opts ..
 		}
 
 		if len(partials) != len(sums) {
-			return nil, errors.Errorf("unexpected mismatching sum metrics results (got %d, expected %d)", len(partials), len(sums))
+			return nil, errors.Newf("unexpected mismatching sum metrics results (got %d, expected %d)", len(partials), len(sums))
 		}
 
 		for i := 0; i < len(sums); i++ {

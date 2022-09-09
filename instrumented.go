@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/efficientgo/tools/core/pkg/backoff"
-	"github.com/efficientgo/tools/core/pkg/errcapture"
-	"github.com/pkg/errors"
+	"github.com/efficientgo/core/backoff"
+	"github.com/efficientgo/core/errcapture"
+	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/expfmt"
 )
 
@@ -85,7 +85,7 @@ func NewInstrumentedRunnable(env Environment, name string) InstrumentedRunnableB
 
 func (r *instrumentedRunnable) WithPorts(ports map[string]int, instrumentedPortName string) InstrumentedRunnableBuilder {
 	if _, ok := ports[instrumentedPortName]; !ok {
-		err := NewErrorer(r.name, errors.Errorf("metric port name %v does not exists in given ports", instrumentedPortName))
+		err := NewErrorer(r.name, errors.Newf("metric port name %v does not exists in given ports", instrumentedPortName))
 		r.Linkable = err
 		r.runnable = err
 		return r
@@ -133,7 +133,7 @@ func (r *instrumentedRunnable) MetricTargets() []MetricTarget {
 
 func (r *instrumentedRunnable) Metrics() (_ string, err error) {
 	if !r.IsRunning() {
-		return "", errors.Errorf("%s is not running", r.Name())
+		return "", errors.Newf("%s is not running", r.Name())
 	}
 
 	// Fetch metrics.
@@ -144,7 +144,7 @@ func (r *instrumentedRunnable) Metrics() (_ string, err error) {
 
 	// Check the status code.
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return "", errors.Errorf("unexpected status code %d while fetching metrics", res.StatusCode)
+		return "", errors.Newf("unexpected status code %d while fetching metrics", res.StatusCode)
 	}
 	defer errcapture.ExhaustClose(&err, res.Body, "metrics response")
 
@@ -182,7 +182,7 @@ func (r *instrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExp
 
 		metricsWaitBackoff.Wait()
 	}
-	return errors.Errorf("unable to find metrics %s with expected values after %d retries. Last error: %v. Last values: %v", metricNames, metricsWaitBackoff.NumRetries(), err, sums)
+	return errors.Newf("unable to find metrics %s with expected values after %d retries. Last error: %v. Last values: %v", metricNames, metricsWaitBackoff.NumRetries(), err, sums)
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
@@ -262,7 +262,7 @@ func (r *instrumentedRunnable) WaitRemovedMetric(metricName string, opts ...Metr
 		r.waitBackoff.Wait()
 	}
 
-	return errors.Errorf("the metric %s is still exported by %s", metricName, r.Name())
+	return errors.Newf("the metric %s is still exported by %s", metricName, r.Name())
 }
 
 func NewErrInstrumentedRunnable(name string, err error) InstrumentedRunnable {
