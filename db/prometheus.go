@@ -11,6 +11,8 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/efficientgo/e2e"
+	"github.com/efficientgo/e2e/db/promconfig"
+	"gopkg.in/yaml.v2"
 )
 
 type Prometheus struct {
@@ -56,7 +58,6 @@ scrape_configs:
 	if o.flagOverride != nil {
 		args = e2e.MergeFlagsWithoutRemovingEmpty(args, o.flagOverride)
 	}
-
 	return &Prometheus{InstrumentedRunnable: f.Init(e2e.StartOptions{
 		Image:     o.image,
 		Command:   e2e.NewCommandWithoutEntrypoint("prometheus", e2e.BuildArgs(args)...),
@@ -65,12 +66,18 @@ scrape_configs:
 	})}
 }
 
-func (p *Prometheus) SetConfig(config string) error {
-	if err := os.WriteFile(filepath.Join(p.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
+func (p *Prometheus) SetConfig(config promconfig.Config) error {
+	b, err := yaml.Marshal(config)
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(filepath.Join(p.Dir(), "prometheus.yml"), b, 0600); err != nil {
 		return errors.Wrap(err, "creating prom config failed")
 	}
 
 	if p.IsRunning() {
+		// Reload configuration.
 		return p.Exec(e2e.NewCommand("kill", "-SIGHUP", "1"))
 	}
 	return nil

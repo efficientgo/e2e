@@ -15,16 +15,15 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
+	"github.com/efficientgo/e2e/db/promconfig"
+	"github.com/efficientgo/e2e/db/promconfig/discovery/config"
+	"github.com/efficientgo/e2e/db/promconfig/discovery/targetgroup"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
-	"github.com/efficientgo/e2e/monitoring/promconfig"
-	sdconfig "github.com/efficientgo/e2e/monitoring/promconfig/discovery/config"
-	"github.com/efficientgo/e2e/monitoring/promconfig/discovery/targetgroup"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"gopkg.in/yaml.v2"
 )
 
 type Service struct {
@@ -39,8 +38,6 @@ type listener struct {
 }
 
 func (l *listener) updateConfig(started map[string]instrumented) error {
-	// TODO(bwplotka): Scrape our process metrics too?
-
 	cfg := promconfig.Config{
 		GlobalConfig: promconfig.GlobalConfig{
 			ExternalLabels: map[model.LabelName]model.LabelValue{"prometheus": model.LabelValue(l.p.Name())},
@@ -93,11 +90,7 @@ func (l *listener) updateConfig(started map[string]instrumented) error {
 		add(name, s)
 	}
 
-	o, err := yaml.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-	return l.p.SetConfig(string(o))
+	return l.p.SetConfig(cfg)
 }
 
 type instrumented interface {
