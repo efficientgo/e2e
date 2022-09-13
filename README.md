@@ -155,7 +155,7 @@ func Run(ctx context.Context) error {
 
 This will run your code in a container allowing to use the same monitoring methods thanks to cadvisor.
 
-### Continous Profiling
+### Continuous Profiling
 
 Similarly to [Monitoring](#monitoring), you can wrap your runnable (or instrumented runnable) with `e2eprof.AsProfiled` if your service uses HTTP pprof handlers (common in Go). When wrapped, you can start continuous profiler using [`e2eprof`](profiling) package:
 
@@ -178,6 +178,10 @@ To see how it works in practice, run our example code in [standalone.go](example
 * Monitoring (Prometheus)
 * Profiling (Parca)
 * Tracing (Jaeger).
+
+In the profiling UI choose a profile type, filter by instances (autocompleted) and select the profile:
+
+![img.png](profiling.png)
 
 > NOTE: For runnables that are both instrumented and profiled you can use [`e2eobs.AsObservable`](observable/observable.go).
 

@@ -77,7 +77,7 @@ object_storage:
 	}
 }
 
-// SetScrapeConfigs updates Parca with new configuration  marsh
+// SetScrapeConfigs updates Parca with new configuration.
 func (p *Parca) SetScrapeConfigs(scrapeJobs []parcaconfig.ScrapeConfig) error {
 	if p.BuildErr() != nil {
 		return p.BuildErr()
@@ -92,14 +92,9 @@ func (p *Parca) SetScrapeConfigs(scrapeJobs []parcaconfig.ScrapeConfig) error {
 		return err
 	}
 
-	config := fmt.Sprintf("%v\n%v", c, b)
+	config := fmt.Sprintf("%v\n%s", c, b)
 	if err := os.WriteFile(filepath.Join(p.Dir(), "parca.yml"), []byte(config), 0600); err != nil {
 		return errors.Wrap(err, "creating Parca config failed")
-	}
-
-	if p.IsRunning() {
-		// Reload configuration.
-		return p.Exec(e2e.NewCommand("kill", "-SIGHUP", "1"))
 	}
 	return nil
 }
@@ -237,7 +232,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	env.AddListener(l)
 
 	if err := e2e.StartAndWaitReady(p); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "starting profiling and waiting until ready")
 	}
 
 	select {

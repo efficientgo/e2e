@@ -273,7 +273,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 
 	c := newCadvisor(env, "cadvisor")
 	if err := e2e.StartAndWaitReady(c, p); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "starting cadvisor and monitoring and waiting until ready")
 	}
 
 	select {

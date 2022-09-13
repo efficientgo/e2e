@@ -413,7 +413,7 @@ func (d *dockerRunnable) Start() (err error) {
 	}()
 
 	// Make sure the image is available locally; if not wait for it to download.
-	if err = d.prePullImage(context.TODO()); err != nil {
+	if err := d.prePullImage(context.TODO()); err != nil {
 		return err
 	}
 
@@ -421,13 +421,13 @@ func (d *dockerRunnable) Start() (err error) {
 	l := &LinePrefixLogger{prefix: d.Name() + ": ", logger: d.logger}
 	cmd.Stdout = l
 	cmd.Stderr = l
-	if err = cmd.Start(); err != nil {
+	if err := cmd.Start(); err != nil {
 		return err
 	}
 	d.usedNetworkName = d.env.networkName
 
 	// Wait until the container has been started.
-	if err = d.waitForRunning(); err != nil {
+	if err := d.waitForRunning(); err != nil {
 		return err
 	}
 
@@ -452,6 +452,7 @@ func (d *dockerRunnable) Start() (err error) {
 			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s", containerPort, d.Name())
 		}
 	}
+
 	d.logger.Log("Ports for container", d.containerName(), ">> Local ports:", d.ports, "Ports available from host:", d.hostPorts)
 	return nil
 }
