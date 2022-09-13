@@ -168,22 +168,23 @@ func (e *DockerEnvironment) AddCloser(f func()) {
 
 func (e *DockerEnvironment) Runnable(name string) RunnableBuilder {
 	if e.closed {
-		return Errorer{name: name, err: errors.New("environment close was invoked already.")}
+		return errorer{name: name, err: errors.New("environment close was invoked already.")}
 	}
 
 	if e.isRegistered(name) {
-		return Errorer{name: name, err: errors.Newf("there is already one runnable created with the same name %v", name)}
+		return errorer{name: name, err: errors.Newf("there is already one runnable created with the same name %v", name)}
 	}
 
 	d := &dockerRunnable{
-		env:       e,
-		name:      name,
-		logger:    e.logger,
-		ports:     map[string]int{},
-		hostPorts: map[string]int{},
+		env:        e,
+		name:       name,
+		logger:     e.logger,
+		ports:      map[string]int{},
+		hostPorts:  map[string]int{},
+		extensions: map[any]any{},
 	}
 	if err := os.MkdirAll(d.Dir(), 0750); err != nil {
-		return Errorer{name: name, err: err}
+		return errorer{name: name, err: err}
 	}
 	e.register(name)
 	return d
@@ -194,34 +195,36 @@ func (e *DockerEnvironment) AddListener(listener EnvironmentListener) {
 	e.listeners = append(e.listeners, listener)
 }
 
-type Errorer struct {
+type errorer struct {
 	name string
 	err  error
 }
 
-func NewErrorer(name string, err error) Errorer {
-	return Errorer{
+// NewFailedRunnable returns runnable that failed in construction.
+func NewFailedRunnable(name string, err error) Runnable {
+	return errorer{
 		name: name,
 		err:  err,
 	}
 }
 
-func (e Errorer) Name() string                             { return e.name }
-func (Errorer) Dir() string                                { return "" }
-func (Errorer) InternalDir() string                        { return "" }
-func (e Errorer) Start() error                             { return e.err }
-func (e Errorer) WaitReady() error                         { return e.err }
-func (e Errorer) Kill() error                              { return e.err }
-func (e Errorer) Stop() error                              { return e.err }
-func (e Errorer) Exec(Command, ...ExecOption) error        { return e.err }
-func (Errorer) Endpoint(string) string                     { return "" }
-func (Errorer) InternalEndpoint(string) string             { return "" }
-func (Errorer) IsRunning() bool                            { return false }
-func (Errorer) SetMetadata(_, _ any)                       {}
-func (Errorer) GetMetadata(any) (any, bool)                { return nil, false }
-func (e Errorer) Init(StartOptions) Runnable               { return e }
-func (e Errorer) WithPorts(map[string]int) RunnableBuilder { return e }
-func (e Errorer) Future() FutureRunnable                   { return e }
+func (e errorer) BuildErr() error                          { return e.err }
+func (e errorer) Name() string                             { return e.name }
+func (errorer) Dir() string                                { return "" }
+func (errorer) InternalDir() string                        { return "" }
+func (e errorer) Start() error                             { return e.BuildErr() }
+func (e errorer) WaitReady() error                         { return e.BuildErr() }
+func (e errorer) Kill() error                              { return e.BuildErr() }
+func (e errorer) Stop() error                              { return e.BuildErr() }
+func (e errorer) Exec(Command, ...ExecOption) error        { return e.BuildErr() }
+func (errorer) Endpoint(string) string                     { return "" }
+func (errorer) InternalEndpoint(string) string             { return "" }
+func (errorer) IsRunning() bool                            { return false }
+func (errorer) SetMetadata(_, _ any)                       {}
+func (errorer) GetMetadata(any) (any, bool)                { return nil, false }
+func (e errorer) Init(StartOptions) Runnable               { return e }
+func (e errorer) WithPorts(map[string]int) RunnableBuilder { return e }
+func (e errorer) Future() FutureRunnable                   { return e }
 
 func (e *DockerEnvironment) isRegistered(name string) bool {
 	_, ok := e.registered[name]
@@ -342,6 +345,10 @@ type dockerRunnable struct {
 
 func (d *dockerRunnable) Name() string {
 	return d.name
+}
+
+func (d *dockerRunnable) BuildErr() error {
+	return nil
 }
 
 func (d *dockerRunnable) Dir() string {

@@ -1,7 +1,7 @@
 // Copyright (c) The EfficientGo Authors.
 // Licensed under the Apache License 2.0.
 
-package e2emonitoring
+package e2emon
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/efficientgo/core/errors"
 )
 
-// CompositeInstrumentedRunnable abstract an higher-level service composed by more than one InstrumentedRunnable.
+// CompositeInstrumentedRunnable abstract a higher-level service composed by more than one InstrumentedRunnable.
 type CompositeInstrumentedRunnable struct {
 	runnables []*InstrumentedRunnable
 

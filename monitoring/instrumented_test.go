@@ -1,7 +1,7 @@
 // Copyright (c) The EfficientGo Authors.
 // Licensed under the Apache License 2.0.
 
-package e2emonitoring
+package e2emon
 
 import (
 	"context"
@@ -81,7 +81,7 @@ metric_b_summary_count 1
 	r := AsInstrumented(
 		&runnableFake{endpoints: map[string]string{"http": ln.Addr().String()}},
 		"http",
-		WithRunnableWaitBackoff(backoff.New(context.Background(), backoff.Config{
+		WithInstrumentedWaitBackoff(backoff.New(context.Background(), backoff.Config{
 			Min:        300 * time.Millisecond,
 			Max:        600 * time.Millisecond,
 			MaxRetries: 50,
@@ -154,7 +154,7 @@ metric_b 1000
 	r := AsInstrumented(
 		&runnableFake{endpoints: map[string]string{"http": ln.Addr().String()}},
 		"http",
-		WithRunnableWaitBackoff(backoff.New(context.Background(), backoff.Config{
+		WithInstrumentedWaitBackoff(backoff.New(context.Background(), backoff.Config{
 			Min:        300 * time.Millisecond,
 			Max:        600 * time.Millisecond,
 			MaxRetries: 50,

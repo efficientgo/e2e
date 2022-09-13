@@ -16,3 +16,4 @@ vendor/
 .bin/
 .idea/
 .envrc
+e2e_*/

@@ -1,7 +1,7 @@
 // Copyright (c) The EfficientGo Authors.
 // Licensed under the Apache License 2.0.
 
-package e2emonitoring
+package e2emon
 
 import (
 	"fmt"
@@ -18,11 +18,9 @@ import (
 	"github.com/efficientgo/core/errcapture"
 	"github.com/efficientgo/core/errors"
 	"github.com/efficientgo/e2e"
-	e2edb "github.com/efficientgo/e2e/db"
-	"github.com/efficientgo/e2e/db/promconfig/discovery/config"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
 	"github.com/efficientgo/e2e/monitoring/promconfig"
-	"github.com/efficientgo/e2e/monitoring/promconfig/discovery/config"
+	sdconfig "github.com/efficientgo/e2e/monitoring/promconfig/discovery/config"
 	"github.com/efficientgo/e2e/monitoring/promconfig/discovery/targetgroup"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -32,7 +30,9 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var metaKey = struct{}{}
+type metaKeyType struct{}
+
+var metaKey = metaKeyType{}
 
 type Prometheus struct {
 	e2e.Runnable
@@ -63,7 +63,7 @@ scrape_configs:
     action: drop
 `, name, f.InternalEndpoint("http"))
 	if err := os.WriteFile(filepath.Join(f.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
-		return &Prometheus{Runnable: e2e.NewErrorer(name, errors.Wrap(err, "create prometheus config failed"))}
+		return &Prometheus{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "create prometheus config failed"))}
 	}
 
 	args := map[string]string{
@@ -90,13 +90,12 @@ scrape_configs:
 	}
 }
 
-func (p *Prometheus) SetConfig(config promconfig.Config) error {
-	b, err := yaml.Marshal(config)
-	if err != nil {
-		return err
+func (p *Prometheus) SetConfigEncoded(config []byte) error {
+	if p.BuildErr() != nil {
+		return p.BuildErr()
 	}
 
-	if err := os.WriteFile(filepath.Join(p.Dir(), "prometheus.yml"), b, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(p.Dir(), "prometheus.yml"), config, 0600); err != nil {
 		return errors.Wrap(err, "creating prom config failed")
 	}
 
@@ -105,6 +104,15 @@ func (p *Prometheus) SetConfig(config promconfig.Config) error {
 		return p.Exec(e2e.NewCommand("kill", "-SIGHUP", "1"))
 	}
 	return nil
+}
+
+func (p *Prometheus) SetConfig(config promconfig.Config) error {
+	b, err := yaml.Marshal(config)
+	if err != nil {
+		return err
+	}
+
+	return p.SetConfigEncoded(b)
 }
 
 type Service struct {
@@ -125,33 +133,6 @@ func (l *listener) updateConfig(started map[string]Instrumented) error {
 			ScrapeInterval: model.Duration(l.scrapeInterval),
 		},
 	}
-	add := func(name string, instr Instrumented) {
-		scfg := &promconfig.ScrapeConfig{
-			JobName:                name,
-			ServiceDiscoveryConfig: sdconfig.sdconfig{},
-			HTTPClientConfig: config.HTTPClientConfig{
-				TLSConfig: config.TLSConfig{
-					// TODO(bwplotka): Allow providing certs?
-					// Allow insecure TLS. We are in benchmark/test that is focused on gathering data on all cost.
-					InsecureSkipVerify: true,
-				},
-			},
-		}
-
-		for _, t := range instr.MetricTargets() {
-			g := &targetgroup.Group{
-				Targets: []model.LabelSet{map[model.LabelName]model.LabelValue{
-					model.AddressLabel: model.LabelValue(t.InternalEndpoint),
-				}},
-				Labels: map[model.LabelName]model.LabelValue{
-					model.SchemeLabel:      model.LabelValue(strings.ToLower(t.Scheme)),
-					model.MetricsPathLabel: model.LabelValue(t.MetricPath),
-				},
-			}
-			scfg.ServiceDiscoveryConfig.StaticConfigs = append(scfg.ServiceDiscoveryConfig.StaticConfigs, g)
-		}
-		cfg.ScrapeConfigs = append(cfg.ScrapeConfigs, scfg)
-	}
 
 	// Register local address.
 	scfg := &promconfig.ScrapeConfig{
@@ -166,9 +147,32 @@ func (l *listener) updateConfig(started map[string]Instrumented) error {
 	}
 	cfg.ScrapeConfigs = append(cfg.ScrapeConfigs, scfg)
 
-	//add("e2emonitoring-prometheus", l.p)
 	for name, s := range started {
-		add(name, s)
+		scfg := &promconfig.ScrapeConfig{
+			JobName:                name,
+			ServiceDiscoveryConfig: sdconfig.ServiceDiscoveryConfig{},
+			HTTPClientConfig: config.HTTPClientConfig{
+				TLSConfig: config.TLSConfig{
+					// TODO(bwplotka): Allow providing certs?
+					// Allow insecure TLS. We are in benchmark/test that is focused on gathering data on all cost.
+					InsecureSkipVerify: true,
+				},
+			},
+		}
+
+		for _, t := range s.MetricTargets() {
+			g := &targetgroup.Group{
+				Targets: []model.LabelSet{map[model.LabelName]model.LabelValue{
+					model.AddressLabel: model.LabelValue(t.InternalEndpoint),
+				}},
+				Labels: map[model.LabelName]model.LabelValue{
+					model.SchemeLabel:      model.LabelValue(strings.ToLower(t.Scheme)),
+					model.MetricsPathLabel: model.LabelValue(t.MetricPath),
+				},
+			}
+			scfg.ServiceDiscoveryConfig.StaticConfigs = append(scfg.ServiceDiscoveryConfig.StaticConfigs, g)
+		}
+		cfg.ScrapeConfigs = append(cfg.ScrapeConfigs, scfg)
 	}
 
 	return l.p.SetConfig(cfg)
@@ -218,8 +222,8 @@ func WithPrometheusImage(image string) Option {
 
 type Option func(*opt)
 
-// Start deploys monitoring service which deploys Prometheus that monitors all registered InstrumentedServices
-// in environment.
+// Start deploys monitoring service which deploys Prometheus that monitors all
+// InstrumentedRunnable instances in environment created with AsInstrumented.
 func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	opt := opt{scrapeInterval: 5 * time.Second}
 	for _, o := range opts {
@@ -255,11 +259,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	go func() { _ = s.Serve(list) }()
 	env.AddCloser(func() { _ = s.Close() })
 
-	var dbOpts []e2edb.Option
-	if opt.customPromImage != "" {
-		dbOpts = append(dbOpts, e2edb.WithImage(opt.customPromImage))
-	}
-	p := e2edb.NewPrometheus(env, "monitoring", dbOpts...)
+	p := NewPrometheus(env, "monitoring", opt.customPromImage, nil)
 
 	_, port, err := net.SplitHostPort(list.Addr().String())
 	if err != nil {
@@ -286,7 +286,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 }
 
 func (s *Service) OpenUserInterfaceInBrowser(paths ...string) error {
-	return e2einteractive.OpenInBrowser("http://" + s.p.Endpoint(e2edb.AccessPortName) + strings.Join(paths, "/"))
+	return e2einteractive.OpenInBrowser("http://" + s.p.Endpoint("http") + strings.Join(paths, "/"))
 }
 
 // InstantQuery evaluates instant PromQL queries against monitoring service.
@@ -295,7 +295,7 @@ func (s *Service) InstantQuery(query string) (string, error) {
 		return "", errors.Newf("%s is not running", s.p.Name())
 	}
 
-	res, err := (&http.Client{}).Get("http://" + s.p.Endpoint(e2edb.AccessPortName) + "/api/v1/query?query=" + query)
+	res, err := (&http.Client{}).Get("http://" + s.p.Endpoint("http") + "/api/v1/query?query=" + query)
 	if err != nil {
 		return "", err
 	}

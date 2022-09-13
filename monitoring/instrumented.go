@@ -1,7 +1,7 @@
 // Copyright (c) The EfficientGo Authors.
 // Licensed under the Apache License 2.0.
 
-package e2emonitoring
+package e2emon
 
 import (
 	"context"
@@ -20,12 +20,14 @@ import (
 
 var errMissingMetric = errors.New("metric not found")
 
+// Target represents scrape target for Prometheus to use.
 type Target struct {
 	InternalEndpoint string
 	MetricPath       string // "/metrics" by default.
 	Scheme           string // "http" by default.
 }
 
+// Instrumented represents methods for instrumented runnable focused on accessing instrumented metrics.
 type Instrumented interface {
 	MetricTargets() []Target
 	Metrics() (string, error)
@@ -35,6 +37,9 @@ type Instrumented interface {
 	WaitRemovedMetric(metricName string, opts ...MetricsOption) error
 }
 
+var _ Instrumented = &InstrumentedRunnable{}
+
+// InstrumentedRunnable represents runnable with instrumented Prometheus metric endpoint on a certain port.
 type InstrumentedRunnable struct {
 	e2e.Runnable
 
@@ -45,42 +50,46 @@ type InstrumentedRunnable struct {
 	waitBackoff *backoff.Backoff
 }
 
-type runnableOpt struct {
+type rOpt struct {
 	metricPath  string
 	scheme      string
 	waitBackoff *backoff.Backoff
 }
 
-// WithRunnableMetricPath sets a custom path for metrics page. "/metrics" by default.
-func WithRunnableMetricPath(metricPath string) RunnableOption {
-	return func(o *runnableOpt) {
+// WithInstrumentedMetricPath sets a custom path for metrics page. "/metrics" by default.
+func WithInstrumentedMetricPath(metricPath string) InstrumentedOption {
+	return func(o *rOpt) {
 		o.metricPath = metricPath
 	}
 }
 
-// WithRunnableScheme allows adding customized scheme. "http" or "https" values allowed. "http" by default.
+// WithInstrumentedScheme allows adding customized scheme. "http" or "https" values allowed. "http" by default.
 // If "https" is specified, insecure TLS will be performed.
-func WithRunnableScheme(scheme string) RunnableOption {
-	return func(o *runnableOpt) {
+func WithInstrumentedScheme(scheme string) InstrumentedOption {
+	return func(o *rOpt) {
 		o.scheme = scheme
 	}
 }
 
-// WithRunnableWaitBackoff allows adding customized scheme. "http" or "https" values allowed. "http" by default.
-// If "https" is specified, insecure TLS will be performed.
-func WithRunnableWaitBackoff(waitBackoff *backoff.Backoff) RunnableOption {
-	return func(o *runnableOpt) {
+// WithInstrumentedWaitBackoff allows customizing wait backoff when accessing metric endpoint.
+func WithInstrumentedWaitBackoff(waitBackoff *backoff.Backoff) InstrumentedOption {
+	return func(o *rOpt) {
 		o.waitBackoff = waitBackoff
 	}
 }
 
-type RunnableOption func(*runnableOpt)
+// InstrumentedOption is a variadic option for AsInstrumented.
+type InstrumentedOption func(*rOpt)
 
-// AsInstrumented wraps e2e.Runnable with InstrumentedRunnable that satisfies both Instrumented and e2e.Runnable
-// that represents runnable with instrumented Prometheus metric endpoint on a certain port.
-// NOTE(bwplotka): Caller is expected to discard passed `r` runnable and use returned InstrumentedRunnable.InstrumentedRunnable instead.
-func AsInstrumented(r e2e.Runnable, instrumentedPortName string, opts ...RunnableOption) *InstrumentedRunnable {
-	opt := runnableOpt{
+// AsInstrumented wraps e2e.Runnable with InstrumentedRunnable.
+// If runnable is running during invocation AsInstrumented panics.
+// NOTE(bwplotka): Caller is expected to discard passed `r` runnable and use returned InstrumentedRunnable.Runnable instead.
+func AsInstrumented(r e2e.Runnable, instrumentedPortName string, opts ...InstrumentedOption) *InstrumentedRunnable {
+	if r.IsRunning() {
+		panic("can't use AsInstrumented with running runnable")
+	}
+
+	opt := rOpt{
 		metricPath: "/metrics",
 		scheme:     "http",
 		waitBackoff: backoff.New(context.Background(), backoff.Config{
@@ -93,7 +102,10 @@ func AsInstrumented(r e2e.Runnable, instrumentedPortName string, opts ...Runnabl
 	}
 
 	if r.InternalEndpoint(instrumentedPortName) == "" {
-		return &InstrumentedRunnable{Runnable: e2e.NewErrorer(r.Name(), errors.Newf("metric port name %v does not exists in given runnable ports", instrumentedPortName))}
+		return &InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(
+			r.Name(),
+			errors.Newf("metric port name %v does not exists in given runnable ports", instrumentedPortName)),
+		}
 	}
 
 	instr := &InstrumentedRunnable{

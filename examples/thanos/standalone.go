@@ -14,7 +14,8 @@ import (
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
-	e2emonitoring "github.com/efficientgo/e2e/monitoring"
+	e2emon "github.com/efficientgo/e2e/monitoring"
+	e2eprof "github.com/efficientgo/e2e/profiling"
 	"github.com/oklog/run"
 )
 
@@ -27,7 +28,12 @@ func deployWithMonitoring(ctx context.Context) error {
 	// Make sure resources (e.g docker containers, network, dir) are cleaned.
 	defer e.Close()
 
-	mon, err := e2emonitoring.Start(e)
+	mon, err := e2emon.Start(e)
+	if err != nil {
+		return err
+	}
+
+	prof, err := e2eprof.Start(e)
 	if err != nil {
 		return err
 	}
@@ -69,10 +75,10 @@ config:
 	if err := merrors.New(
 		// To ensure query should have access we can check its Prometheus metric using WaitSumMetrics method. Since the metric we are looking for
 		// only appears after init, we add option to wait for it.
-		t1.WaitSumMetricsWithOptions(e2emonitoring.Equals(2), []string{"thanos_store_nodes_grpc_connections"}, e2emonitoring.WaitMissingMetrics()),
+		t1.WaitSumMetricsWithOptions(e2emon.Equals(2), []string{"thanos_store_nodes_grpc_connections"}, e2emon.WaitMissingMetrics()),
 		// To ensure Prometheus scraped already something ensure number of scrapes.
-		p1.WaitSumMetrics(e2emonitoring.Greater(50), "prometheus_tsdb_head_samples_appended_total"),
-		p2.WaitSumMetrics(e2emonitoring.Greater(50), "prometheus_tsdb_head_samples_appended_total"),
+		p1.WaitSumMetrics(e2emon.Greater(50), "prometheus_tsdb_head_samples_appended_total"),
+		p2.WaitSumMetrics(e2emon.Greater(50), "prometheus_tsdb_head_samples_appended_total"),
 	).Err(); err != nil {
 		return err
 	}
@@ -84,6 +90,10 @@ config:
 	// Open monitoring page with all metrics.
 	if err := mon.OpenUserInterfaceInBrowser(); err != nil {
 		return errors.Wrap(err, "open monitoring UI in browser")
+	}
+	// Open profiling page with all profiles.
+	if err := prof.OpenUserInterfaceInBrowser(); err != nil {
+		return errors.Wrap(err, "open profiling UI in browser")
 	}
 	// Open jaeger UI.
 	if err := e2einteractive.OpenInBrowser("http://" + j.Endpoint("http.front")); err != nil {

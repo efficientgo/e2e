@@ -17,7 +17,7 @@ There are three main use cases envisioned for this Go module:
 
 * *e2e test use* ([see example](examples/thanos/e2etest_test.go)). Use `e2e` in e2e tests to quickly run complex test scenarios involving many container services. This was the main reason we created this module. You can check usage of it in [Cortex](https://github.com/cortexproject/cortex/tree/master/integration) and [Thanos](https://github.com/thanos-io/thanos/tree/main/test/e2e) projects.
 * *Standalone use* ([see example](examples/thanos/standalone.go)). Use `e2e` to run setups in interactive mode where you spin up workloads as you want *programmatically* and poke with it on your own using your browser or other tools. No longer need to deploy full Kubernetes or external machines.
-* *Benchmark use* ([see example](examples/thanos/benchmark_test.go)). Use `e2e` in local Go benchmarks when your code depends on external services with ease.
+* *Benchmark use*. Use `e2e` in local Go benchmarks when your code depends on external services with ease.
 
 ### Getting Started
 
@@ -26,18 +26,17 @@ Let's go through an example leveraging the `go test` flow:
 1. Get the `e2e` Go module to your `go.mod` using `go get github.com/efficientgo/e2e`.
 2. Implement a test. Start by creating an environment. Currently `e2e` supports Docker environment only. Use a unique name for all of your tests. It's recommended to keep it stable so resources are consistently cleaned.
 
-   ```go mdox-exec="sed -n '22,26p' examples/thanos/e2etest_test.go"
-
+   ```go mdox-exec="sed -n '24,28p' examples/thanos/e2etest_test.go"
    	// Start isolated environment with given ref.
    	e, err := e2e.New()
    	testutil.Ok(t, err)
    	// Make sure resources (e.g docker containers, network, dir) are cleaned.
+   	t.Cleanup(e.Close)
    ```
 
-3. Implement the workload by embedding `e2e.Runnable` or `*e2e.InstrumentedRunnable`. Or you can use existing ones in the [e2edb](db/) package. For example implementing a function that schedules Jaeger with our desired configuration could look like this:
+3. Implement the workload by creating `e2e.Runnable`. Or you can use existing runnables in the [e2edb](db/) package. For example implementing a function that schedules Jaeger with our desired configuration could look like this:
 
-   ```go mdox-exec="sed -n '35,42p' examples/thanos/standalone.go"
-   	// Setup Jaeger for example purposes, on how easy is to setup tracing pipeline in e2e framework.
+   ```go mdox-exec="sed -n '42,48p' examples/thanos/standalone.go"
    	j := e.Runnable("tracing").
    		WithPorts(
    			map[string]int{
@@ -47,10 +46,27 @@ Let's go through an example leveraging the `go test` flow:
    		Init(e2e.StartOptions{Image: "jaegertracing/all-in-one:1.25"})
    ```
 
-4. Program your scenario as you want. You can start, wait for their readiness, stop, check their metrics and use their network endpoints from both unit test (`Endpoint`) as well as within each workload (`InternalEndpoint`). You can also access workload directory. There is a shared directory across all workloads. Check `Dir` and `InternalDir` runnable methods.
+4. Use `e2emon.AsInstrumented` if you want to be able to query your service for metrics, which is a great way to assess it's internal state in tests! For example see following Etcd definition:
 
-   ```go mdox-exec="sed -n '28,93p' examples/thanos/e2etest_test.go"
+   ```go mdox-exec="sed -n '216,228p' db/db.go"
+   	return e2emon.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 2379, "metrics": 9000}).Init(
+   		e2e.StartOptions{
+   			Image: o.image,
+   			Command: e2e.NewCommand(
+   				"/usr/local/bin/etcd",
+   				"--listen-client-urls=http://0.0.0.0:2379",
+   				"--advertise-client-urls=http://0.0.0.0:2379",
+   				"--listen-metrics-urls=http://0.0.0.0:9000",
+   				"--log-level=error",
+   			),
+   			Readiness: e2e.NewHTTPReadinessProbe("metrics", "/health", 200, 204),
+   		},
+   	), "metrics")
+   ```
 
+5. Program your scenario as you want. You can start, wait for their readiness, stop, check their metrics and use their network endpoints from both unit test (`Endpoint`) as well as within each workload (`InternalEndpoint`). You can also access workload directory. There is a shared directory across all workloads. Check `Dir` and `InternalDir` runnable methods.
+
+   ```go mdox-exec="sed -n '30,53p' examples/thanos/e2etest_test.go"
    	// Create structs for Prometheus containers scraping itself.
    	p1 := e2edb.NewPrometheus(e, "prometheus-1")
    	s1 := e2edb.NewThanosSidecar(e, "sidecar-1", p1)
@@ -67,55 +83,14 @@ Let's go through an example leveraging the `go test` flow:
 
    	// To ensure query should have access we can check its Prometheus metric using WaitSumMetrics method. Since the metric we are looking for
    	// only appears after init, we add option to wait for it.
-   	testutil.Ok(t, t1.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"thanos_store_nodes_grpc_connections"}, e2e.WaitMissingMetrics()))
+   	testutil.Ok(t, t1.WaitSumMetricsWithOptions(e2emon.Equals(2), []string{"thanos_store_nodes_grpc_connections"}, e2emon.WaitMissingMetrics()))
 
    	// To ensure Prometheus scraped already something ensure number of scrapes.
-   	testutil.Ok(t, p1.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
-   	testutil.Ok(t, p2.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
+   	testutil.Ok(t, p1.WaitSumMetrics(e2emon.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
+   	testutil.Ok(t, p2.WaitSumMetrics(e2emon.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
 
    	// We can now query Thanos Querier directly from here, using it's host address thanks to Endpoint method.
    	a, err := api.NewClient(api.Config{Address: "http://" + t1.Endpoint("http")})
-   	testutil.Ok(t, err)
-
-   	{
-   		now := model.Now()
-   		v, w, err := v1.NewAPI(a).Query(context.Background(), "up{}", now.Time())
-   		testutil.Ok(t, err)
-   		testutil.Equals(t, 0, len(w))
-   		testutil.Equals(
-   			t,
-   			fmt.Sprintf(`up{instance="%v", job="myself", prometheus="prometheus-1"} => 1 @[%v]
-   up{instance="%v", job="myself", prometheus="prometheus-2"} => 1 @[%v]`, p1.InternalEndpoint(e2edb.AccessPortName), now, p2.InternalEndpoint(e2edb.AccessPortName), now),
-   			v.String(),
-   		)
-   	}
-
-   	// Stop first Prometheus and sidecar.
-   	testutil.Ok(t, s1.Stop())
-   	testutil.Ok(t, p1.Stop())
-
-   	// Wait a bit until Thanos drops connection to stopped Prometheus.
-   	testutil.Ok(t, t1.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"thanos_store_nodes_grpc_connections"}, e2e.WaitMissingMetrics()))
-
-   	{
-   		now := model.Now()
-   		v, w, err := v1.NewAPI(a).Query(context.Background(), "up{}", now.Time())
-   		testutil.Ok(t, err)
-   		testutil.Equals(t, 0, len(w))
-   		testutil.Equals(
-   			t,
-   			fmt.Sprintf(`up{instance="%v", job="myself", prometheus="prometheus-2"} => 1 @[%v]`, p2.InternalEndpoint(e2edb.AccessPortName), now),
-   			v.String(),
-   		)
-   	}
-
-   	// Batch job example.
-   	batch := e.Runnable("batch").Init(e2e.StartOptions{Image: "ubuntu:20.04", Command: e2e.NewCommandRunUntilStop()})
-   	testutil.Ok(t, batch.Start())
-
-   	var out bytes.Buffer
-   	testutil.Ok(t, batch.Exec(e2e.NewCommand("echo", "it works"), e2e.WithExecOptionStdout(&out)))
-   	testutil.Equals(t, "it works\n", out.String())
    ```
 
 ### Interactive
@@ -128,22 +103,29 @@ err := e2einteractive.RunUntilEndpointHit()
 
 ### Monitoring
 
-Each instrumented workload have programmatic access to the latest metrics with `WaitSumMetricsWithOptions` methods family. Yet, especially for standalone mode it's often useful to query and visualise all metrics provided by your services/runnables using PromQL. In order to do so just start monitoring from `e2emonitoring` package:
+Each instrumented workload (runnable wrapped with `e2emon.AsInstrumented`) have programmatic access to the latest metrics with `WaitSumMetricsWithOptions` methods family. Yet, especially for standalone mode it's often useful to query and visualise all metrics provided by your services/runnables using PromQL. In order to do so just start monitoring from [`e2emon`](monitoring) package:
 
 ```go
-mon, err := e2emonitoring.Start(e)
+mon, err := e2emon.Start(e)
 ```
 
-This will start Prometheus with automatic discovery for every new and old instrumented runnables being scraped. It also runs cadvisor that monitors docker itself if `env.DockerEnvironment` is started and shows generic performance metrics per container (e.g `container_memory_rss`). Run `OpenUserInterfaceInBrowser()` to open the Prometheus UI in the browser.
+This will start Prometheus with automatic discovery for every new and old instrumented runnables. It also runs cadvisor that monitors docker itself if `env.DockerEnvironment` is started and shows generic performance metrics per container (e.g `container_memory_rss`). Run `OpenUserInterfaceInBrowser()` to open the Prometheus UI in the browser:
 
-```go mdox-exec="sed -n '83,86p' examples/thanos/standalone.go"
-	}
+```go mdox-exec="sed -n '90,93p' examples/thanos/standalone.go"
 	// Open monitoring page with all metrics.
 	if err := mon.OpenUserInterfaceInBrowser(); err != nil {
 		return errors.Wrap(err, "open monitoring UI in browser")
+	}
 ```
 
-To see how it works in practice, run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, three UIs should show in your browser. Thanos one, monitoring (Prometheus) one and tracing (Jaeger) one. In monitoring UI you can then e.g. query docker container metrics using `container_memory_working_set_bytes{id!="/"}` metric:
+To see how it works in practice, run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, three UIs should show in your browser:
+
+* Thanos one,
+* Monitoring (Prometheus)
+* Profiling (Parca)
+* Tracing (Jaeger).
+
+In the monitoring UI you can then e.g. query docker container metrics using `container_memory_working_set_bytes{id!="/"}` metric:
 
 ![mem metric](monitoring.png)
 
@@ -172,6 +154,32 @@ func Run(ctx context.Context) error {
 ```
 
 This will run your code in a container allowing to use the same monitoring methods thanks to cadvisor.
+
+### Continous Profiling
+
+Similarly to [Monitoring](#monitoring), you can wrap your runnable (or instrumented runnable) with `e2eprof.AsProfiled` if your service uses HTTP pprof handlers (common in Go). When wrapped, you can start continuous profiler using [`e2eprof`](profiling) package:
+
+```go
+mon, err := e2eprof.Start(e)
+```
+
+This will start Parca with automatic discovery for every new and old profiled runnables. Run `OpenUserInterfaceInBrowser()` to open the Parca UI in the browser:
+
+```go mdox-exec="sed -n '94,97p' examples/thanos/standalone.go"
+	// Open profiling page with all profiles.
+	if err := prof.OpenUserInterfaceInBrowser(); err != nil {
+		return errors.Wrap(err, "open profiling UI in browser")
+	}
+```
+
+To see how it works in practice, run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, four UIs should show in your browser:
+
+* Thanos one,
+* Monitoring (Prometheus)
+* Profiling (Parca)
+* Tracing (Jaeger).
+
+> NOTE: For runnables that are both instrumented and profiled you can use [`e2eobs.AsObservable`](observable/observable.go).
 
 ### Troubleshooting
 

@@ -1,4 +1,4 @@
-package e2eprofiling
+package e2eprof
 
 import (
 	"github.com/efficientgo/core/errors"
@@ -7,6 +7,7 @@ import (
 )
 
 type Target struct {
+	Name             string // Represents runnable job and will be used for scrape job name.
 	InternalEndpoint string
 	Scheme           string // "http" by default.
 	Config           *parcaconfig.ProfilingConfig
@@ -16,7 +17,8 @@ type Profiled interface {
 	ProfileTargets() []Target
 }
 
-type Runnable struct {
+// ProfiledRunnable represents runnable with pprof HTTP handlers exposed.
+type ProfiledRunnable struct {
 	e2e.Runnable
 
 	pprofPort string
@@ -24,33 +26,37 @@ type Runnable struct {
 	config    *parcaconfig.ProfilingConfig
 }
 
-type runnableOpt struct {
+type rOpt struct {
 	config *parcaconfig.ProfilingConfig
 	scheme string
 }
 
-// WithRunnableConfig sets a custom parca ProfilingConfig entry about this runnable. Empty by default (Parca defaults apply).
-func WithRunnableConfig(config parcaconfig.ProfilingConfig) RunnableOption {
-	return func(o *runnableOpt) {
+// WithProfiledConfig sets a custom parca ProfilingConfig entry about this runnable. Empty by default (Parca defaults apply).
+func WithProfiledConfig(config parcaconfig.ProfilingConfig) ProfiledOption {
+	return func(o *rOpt) {
 		o.config = &config
 	}
 }
 
-// WithRunnableScheme allows adding customized scheme. "http" or "https" values allowed. "http" by default.
+// WithProfiledScheme allows adding customized scheme. "http" or "https" values allowed. "http" by default.
 // If "https" is specified, insecure TLS will be performed.
-func WithRunnableScheme(scheme string) RunnableOption {
-	return func(o *runnableOpt) {
+func WithProfiledScheme(scheme string) ProfiledOption {
+	return func(o *rOpt) {
 		o.scheme = scheme
 	}
 }
 
-type RunnableOption func(*runnableOpt)
+type ProfiledOption func(*rOpt)
 
-// AsProfiled wraps e2e.Runnable with Runnable that satisfies both Profiled and e2e.Runnable
-// that represents runnable with pprof HTTP handlers exposed.
-// NOTE(bwplotka): Caller is expected to discard passed `r` runnable and use returned Runnable.Runnable instead.
-func AsProfiled(r e2e.Runnable, pprofPortName string, opts ...RunnableOption) *Runnable {
-	opt := runnableOpt{
+// AsProfiled wraps e2e.Runnable with ProfiledRunnable.
+// If runnable is running during invocation AsProfiled panics.
+// NOTE(bwplotka): Caller is expected to discard passed `r` runnable and use returned ProfiledRunnable.Runnable instead.
+func AsProfiled(r e2e.Runnable, pprofPortName string, opts ...ProfiledOption) *ProfiledRunnable {
+	if r.IsRunning() {
+		panic("can't use AsProfiled with running runnable")
+	}
+
+	opt := rOpt{
 		scheme: "http",
 	}
 	for _, o := range opts {
@@ -58,10 +64,10 @@ func AsProfiled(r e2e.Runnable, pprofPortName string, opts ...RunnableOption) *R
 	}
 
 	if r.InternalEndpoint(pprofPortName) == "" {
-		return &Runnable{Runnable: e2e.NewErrorer(r.Name(), errors.Newf("pporf port name %v does not exists in given runnable ports", pprofPortName))}
+		return &ProfiledRunnable{Runnable: e2e.NewFailedRunnable(r.Name(), errors.Newf("pporf port name %v does not exists in given runnable ports", pprofPortName))}
 	}
 
-	instr := &Runnable{
+	instr := &ProfiledRunnable{
 		Runnable:  r,
 		pprofPort: pprofPortName,
 		scheme:    opt.scheme,
@@ -71,6 +77,6 @@ func AsProfiled(r e2e.Runnable, pprofPortName string, opts ...RunnableOption) *R
 	return instr
 }
 
-func (r *Runnable) ProfileTargets() []Target {
-	return []Target{{Scheme: r.scheme, Config: r.config, InternalEndpoint: r.InternalEndpoint(r.pprofPort)}}
+func (r *ProfiledRunnable) ProfileTargets() []Target {
+	return []Target{{Name: r.Name(), Scheme: r.scheme, Config: r.config, InternalEndpoint: r.InternalEndpoint(r.pprofPort)}}
 }

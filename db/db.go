@@ -13,15 +13,9 @@ import (
 	"strings"
 
 	"github.com/efficientgo/e2e"
-	e2emonitoring "github.com/efficientgo/e2e/monitoring"
-	e2eprofiling "github.com/efficientgo/e2e/profiling"
+	e2emon "github.com/efficientgo/e2e/monitoring"
+	e2eprof "github.com/efficientgo/e2e/profiling"
 )
-
-type Observable struct {
-	e2e.Runnable
-	e2emonitoring.Instrumented
-	e2eprofiling.Profiled
-}
 
 const (
 	MinioAccessKey = "Cheescake"
@@ -60,26 +54,26 @@ func WithMinioSSE() Option {
 
 const AccessPortName = "http"
 
-func NewPrometheus(env e2e.Environment, name string, opts ...Option) *e2emonitoring.Prometheus {
+func NewPrometheus(env e2e.Environment, name string, opts ...Option) *e2emon.Prometheus {
 	o := options{}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2emonitoring.NewPrometheus(env, name, o.image, o.flagOverride)
+	return e2emon.NewPrometheus(env, name, o.image, o.flagOverride)
 }
 
-func NewParca(env e2e.Environment, name string, opts ...Option) *e2eprofiling.Parca {
+func NewParca(env e2e.Environment, name string, opts ...Option) *e2eprof.Parca {
 	o := options{}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2eprofiling.NewParca(env, name, o.image, o.flagOverride)
+	return e2eprof.NewParca(env, name, o.image, o.flagOverride)
 }
 
 // NewMinio returns minio server, used as a local replacement for S3.
-func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emonitoring.InstrumentedRunnable {
+func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon.InstrumentedRunnable {
 	o := options{image: "minio/minio:RELEASE.2022-03-14T18-25-24Z"}
 	for _, opt := range opts {
 		opt(&o)
@@ -111,7 +105,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 		command += "curl -sSL --tlsv1.3 -O 'https://raw.githubusercontent.com/minio/kes/master/root.key' -O 'https://raw.githubusercontent.com/minio/kes/master/root.cert' && cp root.* /home/me/ && "
 	}
 
-	return e2emonitoring.AsInstrumented(f.Init(
+	return e2emon.AsInstrumented(f.Init(
 		e2e.StartOptions{
 			Image: o.image,
 			// Create the required bucket before starting minio.
@@ -124,14 +118,14 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 	), AccessPortName)
 }
 
-func NewConsul(env e2e.Environment, name string, opts ...Option) *e2emonitoring.InstrumentedRunnable {
+func NewConsul(env e2e.Environment, name string, opts ...Option) *e2emon.InstrumentedRunnable {
 	o := options{image: "consul:1.8.4"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
 	e2e.MergeFlags()
-	return e2emonitoring.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 8500}).Init(
+	return e2emon.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 8500}).Init(
 		e2e.StartOptions{
 			Image: o.image,
 			// Run consul in "dev" mode so that the initial leader election is immediate.
@@ -141,13 +135,13 @@ func NewConsul(env e2e.Environment, name string, opts ...Option) *e2emonitoring.
 	), AccessPortName)
 }
 
-func NewDynamoDB(env e2e.Environment, name string, opts ...Option) *e2emonitoring.InstrumentedRunnable {
+func NewDynamoDB(env e2e.Environment, name string, opts ...Option) *e2emon.InstrumentedRunnable {
 	o := options{image: "amazon/dynamodb-local:1.11.477"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2emonitoring.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 8000}).Init(
+	return e2emon.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 8000}).Init(
 		e2e.StartOptions{
 			Image:   o.image,
 			Command: e2e.NewCommand("-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"),
@@ -170,13 +164,13 @@ func NewBigtable(env e2e.Environment, name string, opts ...Option) e2e.Runnable 
 	)
 }
 
-func NewCassandra(env e2e.Environment, name string, opts ...Option) *e2emonitoring.InstrumentedRunnable {
+func NewCassandra(env e2e.Environment, name string, opts ...Option) *e2emon.InstrumentedRunnable {
 	o := options{image: "rinscy/cassandra:3.11.0"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2emonitoring.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 9042}).Init(
+	return e2emon.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 9042}).Init(
 		e2e.StartOptions{
 			Image: o.image,
 			// Readiness probe inspired from https://github.com/kubernetes/examples/blob/b86c9d50be45eaf5ce74dee7159ce38b0e149d38/cassandra/image/files/ready-probe.sh
@@ -185,13 +179,13 @@ func NewCassandra(env e2e.Environment, name string, opts ...Option) *e2emonitori
 	), AccessPortName)
 }
 
-func NewSwiftStorage(env e2e.Environment, name string, opts ...Option) *e2emonitoring.InstrumentedRunnable {
+func NewSwiftStorage(env e2e.Environment, name string, opts ...Option) *e2emon.InstrumentedRunnable {
 	o := options{image: "bouncestorage/swift-aio:55ba4331"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2emonitoring.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 8080}).Init(
+	return e2emon.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 8080}).Init(
 		e2e.StartOptions{
 			Image:     o.image,
 			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/", 404, 404),
@@ -213,16 +207,22 @@ func NewMemcached(env e2e.Environment, name string, opts ...Option) e2e.Runnable
 	)
 }
 
-func NewETCD(env e2e.Environment, name string, opts ...Option) *e2emonitoring.InstrumentedRunnable {
+func NewETCD(env e2e.Environment, name string, opts ...Option) *e2emon.InstrumentedRunnable {
 	o := options{image: "gcr.io/etcd-development/etcd:v3.4.7"}
 	for _, opt := range opts {
 		opt(&o)
 	}
 
-	return e2emonitoring.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 2379, "metrics": 9000}).Init(
+	return e2emon.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 2379, "metrics": 9000}).Init(
 		e2e.StartOptions{
-			Image:     o.image,
-			Command:   e2e.NewCommand("/usr/local/bin/etcd", "--listen-client-urls=http://0.0.0.0:2379", "--advertise-client-urls=http://0.0.0.0:2379", "--listen-metrics-urls=http://0.0.0.0:9000", "--log-level=error"),
+			Image: o.image,
+			Command: e2e.NewCommand(
+				"/usr/local/bin/etcd",
+				"--listen-client-urls=http://0.0.0.0:2379",
+				"--advertise-client-urls=http://0.0.0.0:2379",
+				"--listen-metrics-urls=http://0.0.0.0:9000",
+				"--log-level=error",
+			),
 			Readiness: e2e.NewHTTPReadinessProbe("metrics", "/health", 200, 204),
 		},
 	), "metrics")

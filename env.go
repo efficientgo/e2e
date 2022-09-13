@@ -138,6 +138,11 @@ type RunnableBuilder interface {
 }
 
 type runnable interface {
+	// BuildErr returns error if runnable failed to build. If error happened during build all methods like
+	// Start, WaitReady, Kill and Stop will return this error. Rest of the methods will yield empty results, so if you
+	// want to use those before any of the Start, WaitReady, Kill or Stop, you can use BuildErr to check for error explicitly.
+	BuildErr() error
+
 	// IsRunning returns if runnable was started.
 	IsRunning() bool
 

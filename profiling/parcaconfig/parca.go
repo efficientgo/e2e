@@ -4,6 +4,7 @@ import (
 	"net/url"
 
 	"github.com/efficientgo/e2e/monitoring/promconfig"
+	sdconfig "github.com/efficientgo/e2e/monitoring/promconfig/discovery/config"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 )
