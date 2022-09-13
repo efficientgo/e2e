@@ -12,6 +12,7 @@ import (
 	"github.com/efficientgo/core/testutil"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
+	e2e2 "github.com/efficientgo/e2e/monitoring"
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
@@ -42,11 +43,11 @@ func TestExample(t *testing.T) {
 
 	// To ensure query should have access we can check its Prometheus metric using WaitSumMetrics method. Since the metric we are looking for
 	// only appears after init, we add option to wait for it.
-	testutil.Ok(t, t1.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"thanos_store_nodes_grpc_connections"}, e2e.WaitMissingMetrics()))
+	testutil.Ok(t, t1.WaitSumMetricsWithOptions(e2e2.Equals(2), []string{"thanos_store_nodes_grpc_connections"}, e2e2.WaitMissingMetrics()))
 
 	// To ensure Prometheus scraped already something ensure number of scrapes.
-	testutil.Ok(t, p1.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
-	testutil.Ok(t, p2.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
+	testutil.Ok(t, p1.WaitSumMetrics(e2e2.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
+	testutil.Ok(t, p2.WaitSumMetrics(e2e2.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
 
 	// We can now query Thanos Querier directly from here, using it's host address thanks to Endpoint method.
 	a, err := api.NewClient(api.Config{Address: "http://" + t1.Endpoint("http")})
@@ -70,7 +71,7 @@ up{instance="%v", job="myself", prometheus="prometheus-2"} => 1 @[%v]`, p1.Inter
 	testutil.Ok(t, p1.Stop())
 
 	// Wait a bit until Thanos drops connection to stopped Prometheus.
-	testutil.Ok(t, t1.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"thanos_store_nodes_grpc_connections"}, e2e.WaitMissingMetrics()))
+	testutil.Ok(t, t1.WaitSumMetricsWithOptions(e2e2.Equals(1), []string{"thanos_store_nodes_grpc_connections"}, e2e2.WaitMissingMetrics()))
 
 	{
 		now := model.Now()

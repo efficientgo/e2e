@@ -1,7 +1,7 @@
 // Copyright (c) The EfficientGo Authors.
 // Licensed under the Apache License 2.0.
 
-package e2e
+package e2emonitoring
 
 import (
 	"context"
@@ -13,13 +13,13 @@ import (
 
 // CompositeInstrumentedRunnable abstract an higher-level service composed by more than one InstrumentedRunnable.
 type CompositeInstrumentedRunnable struct {
-	runnables []InstrumentedRunnable
+	runnables []*InstrumentedRunnable
 
 	// Generic retry backoff.
 	backoff *backoff.Backoff
 }
 
-func NewCompositeInstrumentedRunnable(runnables ...InstrumentedRunnable) *CompositeInstrumentedRunnable {
+func NewCompositeInstrumentedRunnable(runnables ...*InstrumentedRunnable) *CompositeInstrumentedRunnable {
 	return &CompositeInstrumentedRunnable{
 		runnables: runnables,
 		backoff: backoff.New(context.Background(), backoff.Config{
@@ -30,11 +30,11 @@ func NewCompositeInstrumentedRunnable(runnables ...InstrumentedRunnable) *Compos
 	}
 }
 
-func (r *CompositeInstrumentedRunnable) Instances() []InstrumentedRunnable {
+func (r *CompositeInstrumentedRunnable) Instances() []*InstrumentedRunnable {
 	return r.runnables
 }
 
-func (r *CompositeInstrumentedRunnable) MetricTargets() (ret []MetricTarget) {
+func (r *CompositeInstrumentedRunnable) MetricTargets() (ret []Target) {
 	for _, inst := range r.runnables {
 		ret = append(ret, inst.MetricTargets()...)
 	}

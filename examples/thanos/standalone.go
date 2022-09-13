@@ -69,10 +69,10 @@ config:
 	if err := merrors.New(
 		// To ensure query should have access we can check its Prometheus metric using WaitSumMetrics method. Since the metric we are looking for
 		// only appears after init, we add option to wait for it.
-		t1.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"thanos_store_nodes_grpc_connections"}, e2e.WaitMissingMetrics()),
+		t1.WaitSumMetricsWithOptions(e2emonitoring.Equals(2), []string{"thanos_store_nodes_grpc_connections"}, e2emonitoring.WaitMissingMetrics()),
 		// To ensure Prometheus scraped already something ensure number of scrapes.
-		p1.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"),
-		p2.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"),
+		p1.WaitSumMetrics(e2emonitoring.Greater(50), "prometheus_tsdb_head_samples_appended_total"),
+		p2.WaitSumMetrics(e2emonitoring.Greater(50), "prometheus_tsdb_head_samples_appended_total"),
 	).Err(); err != nil {
 		return err
 	}

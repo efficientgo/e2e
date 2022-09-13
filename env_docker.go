@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/efficientgo/core/backoff"
 	"github.com/efficientgo/core/errors"
@@ -183,7 +182,6 @@ func (e *DockerEnvironment) Runnable(name string) RunnableBuilder {
 		ports:     map[string]int{},
 		hostPorts: map[string]int{},
 	}
-	d.concreteType = d
 	if err := os.MkdirAll(d.Dir(), 0750); err != nil {
 		return Errorer{name: name, err: err}
 	}
@@ -208,22 +206,22 @@ func NewErrorer(name string, err error) Errorer {
 	}
 }
 
-func (e Errorer) id() uintptr                               { return 0 }
-func (e Errorer) Name() string                              { return e.name }
-func (Errorer) Dir() string                                 { return "" }
-func (Errorer) InternalDir() string                         { return "" }
-func (e Errorer) Start() error                              { return e.err }
-func (e Errorer) WaitReady() error                          { return e.err }
-func (e Errorer) Kill() error                               { return e.err }
-func (e Errorer) Stop() error                               { return e.err }
-func (e Errorer) Exec(Command, ...ExecOption) error         { return e.err }
-func (Errorer) Endpoint(string) string                      { return "" }
-func (Errorer) InternalEndpoint(string) string              { return "" }
-func (Errorer) IsRunning() bool                             { return false }
-func (e Errorer) Init(StartOptions) Runnable                { return e }
-func (e Errorer) WithPorts(map[string]int) RunnableBuilder  { return e }
-func (e Errorer) WithConcreteType(Runnable) RunnableBuilder { return e }
-func (e Errorer) Future() FutureRunnable                    { return e }
+func (e Errorer) Name() string                             { return e.name }
+func (Errorer) Dir() string                                { return "" }
+func (Errorer) InternalDir() string                        { return "" }
+func (e Errorer) Start() error                             { return e.err }
+func (e Errorer) WaitReady() error                         { return e.err }
+func (e Errorer) Kill() error                              { return e.err }
+func (e Errorer) Stop() error                              { return e.err }
+func (e Errorer) Exec(Command, ...ExecOption) error        { return e.err }
+func (Errorer) Endpoint(string) string                     { return "" }
+func (Errorer) InternalEndpoint(string) string             { return "" }
+func (Errorer) IsRunning() bool                            { return false }
+func (Errorer) SetMetadata(_, _ any)                       {}
+func (Errorer) GetMetadata(any) (any, bool)                { return nil, false }
+func (e Errorer) Init(StartOptions) Runnable               { return e }
+func (e Errorer) WithPorts(map[string]int) RunnableBuilder { return e }
+func (e Errorer) Future() FutureRunnable                   { return e }
 
 func (e *DockerEnvironment) isRegistered(name string) bool {
 	_, ok := e.registered[name]
@@ -339,7 +337,7 @@ type dockerRunnable struct {
 	// hostPorts Maps port name to dynamically binded local ports.
 	hostPorts map[string]int
 
-	concreteType Runnable
+	extensions map[any]any
 }
 
 func (d *dockerRunnable) Name() string {
@@ -373,13 +371,13 @@ func (d *dockerRunnable) WithPorts(ports map[string]int) RunnableBuilder {
 	return d
 }
 
-func (d *dockerRunnable) WithConcreteType(r Runnable) RunnableBuilder {
-	d.concreteType = r
-	return d
+func (d *dockerRunnable) SetMetadata(key, value any) {
+	d.extensions[key] = value
 }
 
-func (d *dockerRunnable) id() uintptr {
-	return uintptr(unsafe.Pointer(d))
+func (d *dockerRunnable) GetMetadata(key any) (any, bool) {
+	v, ok := d.extensions[key]
+	return v, ok
 }
 
 func (d *dockerRunnable) Future() FutureRunnable {
@@ -394,14 +392,6 @@ func (d *dockerRunnable) IsRunning() bool {
 func (d *dockerRunnable) Start() (err error) {
 	if d.IsRunning() {
 		return errors.Newf("%v is running. Stop or kill it first to restart.", d.Name())
-	}
-
-	i, ok := d.concreteType.(identificable)
-	if !ok {
-		return errors.Newf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; not implementing identificable", d.concreteType)
-	}
-	if i.id() != d.id() {
-		return errors.Newf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; id %v, expected %v", d.concreteType, i.id(), d.id())
 	}
 
 	d.logger.Log("Starting", d.Name())
@@ -434,7 +424,7 @@ func (d *dockerRunnable) Start() (err error) {
 		return err
 	}
 
-	if err := d.env.registerStarted(d.concreteType); err != nil {
+	if err := d.env.registerStarted(d); err != nil {
 		return err
 	}
 

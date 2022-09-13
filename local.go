@@ -52,7 +52,7 @@ func Containerize(e Environment, name string, startFn func(context.Context) erro
 		return nil, errors.Newf("not a Go module %v", wd)
 	}
 
-	f := NewInstrumentedRunnable(e, name).WithPorts(map[string]int{"http": 80}, "http").Future()
+	f := e.Runnable(name).WithPorts(map[string]int{"http": 80}).Future()
 	dir := filepath.Join(f.Dir(), "shim")
 
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {

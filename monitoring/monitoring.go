@@ -4,9 +4,13 @@
 package e2emonitoring
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,39 +19,116 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
-	"github.com/efficientgo/e2e/db/promconfig"
 	"github.com/efficientgo/e2e/db/promconfig/discovery/config"
-	"github.com/efficientgo/e2e/db/promconfig/discovery/targetgroup"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
+	"github.com/efficientgo/e2e/monitoring/promconfig"
+	"github.com/efficientgo/e2e/monitoring/promconfig/discovery/config"
+	"github.com/efficientgo/e2e/monitoring/promconfig/discovery/targetgroup"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"gopkg.in/yaml.v2"
 )
 
+var metaKey = struct{}{}
+
+type Prometheus struct {
+	e2e.Runnable
+	Instrumented
+}
+
+func NewPrometheus(env e2e.Environment, name string, image string, flagOverride map[string]string) *Prometheus {
+	if image == "" {
+		image = "quay.io/prometheus/prometheus:v2.37.0"
+	}
+	ports := map[string]int{"http": 9090}
+
+	f := env.Runnable(name).WithPorts(ports).Future()
+	config := fmt.Sprintf(`
+global:
+  external_labels:
+    prometheus: %v
+scrape_configs:
+- job_name: 'myself'
+  # Quick scrapes for test purposes.
+  scrape_interval: 1s
+  scrape_timeout: 1s
+  static_configs:
+  - targets: [%s]
+  relabel_configs:
+  - source_labels: ['__address__']
+    regex: '^.+:80$'
+    action: drop
+`, name, f.InternalEndpoint("http"))
+	if err := os.WriteFile(filepath.Join(f.Dir(), "prometheus.yml"), []byte(config), 0600); err != nil {
+		return &Prometheus{Runnable: e2e.NewErrorer(name, errors.Wrap(err, "create prometheus config failed"))}
+	}
+
+	args := map[string]string{
+		"--config.file":                     filepath.Join(f.InternalDir(), "prometheus.yml"),
+		"--storage.tsdb.path":               f.InternalDir(),
+		"--storage.tsdb.max-block-duration": "2h", // No compaction - mostly not needed for quick test.
+		"--log.level":                       "info",
+		"--web.listen-address":              fmt.Sprintf(":%d", ports["http"]),
+	}
+	if flagOverride != nil {
+		args = e2e.MergeFlagsWithoutRemovingEmpty(args, flagOverride)
+	}
+
+	p := AsInstrumented(f.Init(e2e.StartOptions{
+		Image:     image,
+		Command:   e2e.NewCommandWithoutEntrypoint("prometheus", e2e.BuildArgs(args)...),
+		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
+		User:      strconv.Itoa(os.Getuid()),
+	}), "http")
+
+	return &Prometheus{
+		Runnable:     p,
+		Instrumented: p,
+	}
+}
+
+func (p *Prometheus) SetConfig(config promconfig.Config) error {
+	b, err := yaml.Marshal(config)
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(filepath.Join(p.Dir(), "prometheus.yml"), b, 0600); err != nil {
+		return errors.Wrap(err, "creating prom config failed")
+	}
+
+	if p.IsRunning() {
+		// Reload configuration.
+		return p.Exec(e2e.NewCommand("kill", "-SIGHUP", "1"))
+	}
+	return nil
+}
+
 type Service struct {
-	p *e2edb.Prometheus
+	p *Prometheus
 }
 
 type listener struct {
-	p *e2edb.Prometheus
+	p *Prometheus
 
 	localAddr      string
 	scrapeInterval time.Duration
 }
 
-func (l *listener) updateConfig(started map[string]instrumented) error {
+func (l *listener) updateConfig(started map[string]Instrumented) error {
 	cfg := promconfig.Config{
 		GlobalConfig: promconfig.GlobalConfig{
 			ExternalLabels: map[model.LabelName]model.LabelValue{"prometheus": model.LabelValue(l.p.Name())},
 			ScrapeInterval: model.Duration(l.scrapeInterval),
 		},
 	}
-	add := func(name string, instr instrumented) {
+	add := func(name string, instr Instrumented) {
 		scfg := &promconfig.ScrapeConfig{
 			JobName:                name,
-			ServiceDiscoveryConfig: sdconfig.ServiceDiscoveryConfig{},
+			ServiceDiscoveryConfig: sdconfig.sdconfig{},
 			HTTPClientConfig: config.HTTPClientConfig{
 				TLSConfig: config.TLSConfig{
 					// TODO(bwplotka): Allow providing certs?
@@ -85,7 +166,7 @@ func (l *listener) updateConfig(started map[string]instrumented) error {
 	}
 	cfg.ScrapeConfigs = append(cfg.ScrapeConfigs, scfg)
 
-	add("e2emonitoring-prometheus", l.p)
+	//add("e2emonitoring-prometheus", l.p)
 	for name, s := range started {
 		add(name, s)
 	}
@@ -93,18 +174,14 @@ func (l *listener) updateConfig(started map[string]instrumented) error {
 	return l.p.SetConfig(cfg)
 }
 
-type instrumented interface {
-	MetricTargets() []e2e.MetricTarget
-}
-
 func (l *listener) OnRunnableChange(started []e2e.Runnable) error {
-	s := map[string]instrumented{}
+	s := map[string]Instrumented{}
 	for _, r := range started {
-		instr, ok := r.(instrumented)
+		instr, ok := r.GetMetadata(metaKey)
 		if !ok {
 			continue
 		}
-		s[r.Name()] = instr
+		s[r.Name()] = instr.(Instrumented)
 	}
 
 	return l.updateConfig(s)
@@ -117,7 +194,7 @@ type opt struct {
 }
 
 // WithScrapeInterval changes how often metrics are scrape by Prometheus. 5s by default.
-func WithScrapeInterval(interval time.Duration) func(*opt) {
+func WithScrapeInterval(interval time.Duration) Option {
 	return func(o *opt) {
 		o.scrapeInterval = interval
 	}
@@ -126,14 +203,14 @@ func WithScrapeInterval(interval time.Duration) func(*opt) {
 // WithCustomRegistry allows injecting a custom registry to use for this process metrics.
 // NOTE(bwplotka): Injected registry will be used as is, while the default registry
 // will have prometheus.NewGoCollector() and prometheus.NewProcessCollector(..) registered.
-func WithCustomRegistry(reg *prometheus.Registry) func(*opt) {
+func WithCustomRegistry(reg *prometheus.Registry) Option {
 	return func(o *opt) {
 		o.customRegistry = reg
 	}
 }
 
 // WithPrometheusImage allows injecting custom Prometheus docker image to use as scraper and queryable.
-func WithPrometheusImage(image string) func(*opt) {
+func WithPrometheusImage(image string) Option {
 	return func(o *opt) {
 		o.customPromImage = image
 	}
@@ -189,7 +266,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 		return nil, err
 	}
 	l := &listener{p: p, localAddr: net.JoinHostPort(env.HostAddr(), port), scrapeInterval: opt.scrapeInterval}
-	if err := l.updateConfig(map[string]instrumented{}); err != nil {
+	if err := l.updateConfig(map[string]Instrumented{}); err != nil {
 		return nil, err
 	}
 	env.AddListener(l)
@@ -232,12 +309,8 @@ func (s *Service) InstantQuery(query string) (string, error) {
 	return string(body), err
 }
 
-func (s *Service) GetMonitoringRunnable() e2e.InstrumentedRunnable {
-	return s.p.InstrumentedRunnable
-}
-
-func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) e2e.InstrumentedRunnable {
-	return e2e.NewInstrumentedRunnable(env, name).WithPorts(map[string]int{"http": 8080}, "http").Init(e2e.StartOptions{
+func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) *InstrumentedRunnable {
+	return AsInstrumented(env.Runnable(name).WithPorts(map[string]int{"http": 8080}).Init(e2e.StartOptions{
 		// See https://github.com/google/cadvisor/blob/master/docs/runtime_options.md.
 		Command: e2e.NewCommand(
 			// TODO(bwplotka): Add option to scope to dockers only from this network.
@@ -254,5 +327,5 @@ func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) e2e
 		},
 		UserNs:     "host",
 		Privileged: true,
-	})
+	}), "http")
 }

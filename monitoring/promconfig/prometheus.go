@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/efficientgo/core/errors"
-	sdconfig "github.com/efficientgo/e2e/db/promconfig/discovery/config"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 )

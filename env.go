@@ -131,24 +131,13 @@ type RunnableBuilder interface {
 	// WithPorts adds ports to runnable, allowing caller to
 	// use `InternalEndpoint` and `Endpoint` methods by referencing port by name.
 	WithPorts(map[string]int) RunnableBuilder
-	// WithConcreteType allows to use different type for registration in environment,
-	// so environment listeners listening to `OnRunnableChange` can have different
-	// concrete type (e.g InstrumentedRunnable).
-	WithConcreteType(r Runnable) RunnableBuilder
-
 	// Future returns future runnable
 	Future() FutureRunnable
 	// Init returns runnable.
 	Init(opts StartOptions) Runnable
 }
 
-type identificable interface {
-	id() uintptr
-}
-
 type runnable interface {
-	identificable
-
 	// IsRunning returns if runnable was started.
 	IsRunning() bool
 
@@ -177,6 +166,11 @@ type runnable interface {
 	//
 	// If your service is not running, this method returns incorrect `stopped` endpoint.
 	Endpoint(portName string) string
+
+	// SetMetadata allows setting extra metadata describing runnable.
+	SetMetadata(key, value any)
+	// GetMetadata retrieves metadata by given key or return false if not found.
+	GetMetadata(key any) (any, bool)
 }
 
 type ExecOption func(o *ExecOptions)

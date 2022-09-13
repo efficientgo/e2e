@@ -3,8 +3,7 @@ package parcaconfig
 import (
 	"net/url"
 
-	"github.com/efficientgo/e2e/db/promconfig"
-	sdconfig "github.com/efficientgo/e2e/db/promconfig/discovery/config"
+	"github.com/efficientgo/e2e/monitoring/promconfig"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 )

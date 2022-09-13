@@ -10,9 +10,10 @@ import (
 	"strings"
 
 	"github.com/efficientgo/e2e"
+	e2emonitoring "github.com/efficientgo/e2e/monitoring"
 )
 
-func NewThanosQuerier(env e2e.Environment, name string, endpointsAddresses []string, opts ...Option) e2e.InstrumentedRunnable {
+func NewThanosQuerier(env e2e.Environment, name string, endpointsAddresses []string, opts ...Option) *e2emonitoring.InstrumentedRunnable {
 	o := options{image: "quay.io/thanos/thanos:v0.27.0"}
 	for _, opt := range opts {
 		opt(&o)
@@ -38,7 +39,7 @@ func NewThanosQuerier(env e2e.Environment, name string, endpointsAddresses []str
 		args = e2e.MergeFlagsWithoutRemovingEmpty(args, o.flagOverride)
 	}
 
-	return e2e.NewInstrumentedRunnable(env, name).WithPorts(ports, "http").Init(e2e.StartOptions{
+	return e2emonitoring.NewInstrumentedRunnable(env, name).WithPorts(ports, "http").Init(e2e.StartOptions{
 		Image:     o.image,
 		Command:   e2e.NewCommand("query", e2e.BuildKingpinArgs(args)...),
 		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
@@ -46,7 +47,7 @@ func NewThanosQuerier(env e2e.Environment, name string, endpointsAddresses []str
 	})
 }
 
-func NewThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable, opts ...Option) e2e.InstrumentedRunnable {
+func NewThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable, opts ...Option) e2emonitoring.InstrumentedRunnable {
 	o := options{image: "quay.io/thanos/thanos:v0.27.0"}
 	for _, opt := range opts {
 		opt(&o)
@@ -68,7 +69,7 @@ func NewThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable, opts 
 		args = e2e.MergeFlagsWithoutRemovingEmpty(args, o.flagOverride)
 	}
 
-	return e2e.NewInstrumentedRunnable(env, name).WithPorts(ports, "http").Init(e2e.StartOptions{
+	return e2emonitoring.NewInstrumentedRunnable(env, name).WithPorts(ports, "http").Init(e2e.StartOptions{
 		Image:     o.image,
 		Command:   e2e.NewCommand("sidecar", e2e.BuildKingpinArgs(args)...),
 		Readiness: e2e.NewHTTPReadinessProbe("http", "/-/ready", 200, 200),
@@ -76,7 +77,7 @@ func NewThanosSidecar(env e2e.Environment, name string, prom e2e.Linkable, opts 
 	})
 }
 
-func NewThanosStore(env e2e.Environment, name string, bktConfigYaml []byte, opts ...Option) e2e.InstrumentedRunnable {
+func NewThanosStore(env e2e.Environment, name string, bktConfigYaml []byte, opts ...Option) e2emonitoring.InstrumentedRunnable {
 	o := options{image: "quay.io/thanos/thanos:v0.27.0"}
 	for _, opt := range opts {
 		opt(&o)
@@ -87,7 +88,7 @@ func NewThanosStore(env e2e.Environment, name string, bktConfigYaml []byte, opts
 		"grpc": 9091,
 	}
 
-	f := e2e.NewInstrumentedRunnable(env, name).WithPorts(ports, "http").Future()
+	f := e2emonitoring.NewInstrumentedRunnable(env, name).WithPorts(ports, "http").Future()
 	args := map[string]string{
 		"--debug.name":      name,
 		"--grpc-address":    fmt.Sprintf(":%d", ports["grpc"]),

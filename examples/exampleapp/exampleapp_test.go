@@ -13,6 +13,7 @@ import (
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
+	e2e2 "github.com/efficientgo/e2e/monitoring"
 )
 
 func TestExampleApp(t *testing.T) {
@@ -54,7 +55,7 @@ scrape_configs:
 
 	fmt.Println("=== Ensure that Prometheus already scraped something")
 	// Ensure that Prometheus already scraped something.
-	testutil.Ok(t, p1.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
+	testutil.Ok(t, p1.WaitSumMetrics(e2e2.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
 
 	// Open example in browser.
 	exampleAppURL := fmt.Sprintf("http://%s", app.Endpoint("http"))
@@ -63,15 +64,15 @@ scrape_configs:
 
 	fmt.Println("=== I need at least 5 requests!")
 	testutil.Ok(t, app.WaitSumMetricsWithOptions(
-		e2e.GreaterOrEqual(5),
+		e2e2.GreaterOrEqual(5),
 		[]string{"http_requests_total"},
-		e2e.WithWaitBackoff(
+		e2e2.WithWaitBackoff(
 			&backoff.Config{
 				Min:        1 * time.Second,
 				Max:        10 * time.Second,
 				MaxRetries: 100,
 			}),
-		e2e.WaitMissingMetrics()),
+		e2e2.WaitMissingMetrics()),
 	)
 
 	// Now opening Prometheus in browser as well.
