@@ -13,7 +13,7 @@ import (
 	"github.com/efficientgo/core/testutil"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
-	e2e2 "github.com/efficientgo/e2e/monitoring"
+	e2emon "github.com/efficientgo/e2e/monitoring"
 )
 
 func wgetFlagsCmd(hostPort string) e2e.Command {
@@ -49,7 +49,7 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Ok(t, p1.WaitReady())
 	testutil.Ok(t, p1.WaitReady())
 
-	testutil.Ok(t, p1.WaitSumMetrics(e2e2.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
+	testutil.Ok(t, p1.WaitSumMetrics(e2emon.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
 
 	testutil.Equals(t, "prometheus-1", p1.Name())
 	testutil.Equals(t, filepath.Join(e.SharedDir(), "data", p1.Name()), p1.Dir())

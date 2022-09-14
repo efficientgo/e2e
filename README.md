@@ -183,7 +183,9 @@ In the profiling UI choose a profile type, filter by instances (autocompleted) a
 
 ![img.png](profiling.png)
 
-> NOTE: For runnables that are both instrumented and profiled you can use [`e2eobs.AsObservable`](observable/observable.go).
+### Monitoring + Profiling
+
+For runnables that are both instrumented and profiled you can use [`e2eobs.AsObservable`](observable/observable.go).
 
 ### Troubleshooting
 
