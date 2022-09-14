@@ -223,7 +223,7 @@ func WithPrometheusImage(image string) Option {
 type Option func(*opt)
 
 // Start deploys monitoring service which deploys Prometheus that monitors all
-// InstrumentedRunnable instances in environment created with AsInstrumented.
+// InstrumentedRunnable instances in an environment created with AsInstrumented.
 func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	opt := opt{scrapeInterval: 5 * time.Second}
 	for _, o := range opts {

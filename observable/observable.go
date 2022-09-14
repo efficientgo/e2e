@@ -11,7 +11,7 @@ import (
 	"github.com/efficientgo/e2e/profiling/parcaconfig"
 )
 
-// Observable represents runnable that is both instrumented and profiled. Typically, all well-written Go services
+// Observable represents a runnable that is both instrumented and profiled. Typically, all well-written Go services
 // are observable.
 type Observable struct {
 	e2e.Runnable
@@ -24,7 +24,7 @@ type opt struct {
 	profOpts  []e2eprof.ProfiledOption
 }
 
-// WithScheme allows adding customized scheme. "http" or "https" values allowed. "http" by default.
+// WithScheme allows adding a customized scheme. "http" or "https" values are allowed. "http" by default.
 // If "https" is specified, insecure TLS will be performed.
 func WithScheme(scheme string) Option {
 	return func(o *opt) {

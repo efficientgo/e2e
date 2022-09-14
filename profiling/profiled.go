@@ -67,7 +67,7 @@ func AsProfiled(r e2e.Runnable, pprofPortName string, opts ...ProfiledOption) *P
 	}
 
 	if r.InternalEndpoint(pprofPortName) == "" {
-		return &ProfiledRunnable{Runnable: e2e.NewFailedRunnable(r.Name(), errors.Newf("pporf port name %v does not exists in given runnable ports", pprofPortName))}
+		return &ProfiledRunnable{Runnable: e2e.NewFailedRunnable(r.Name(), errors.Newf("pprof port name %v does not exist in given runnable ports", pprofPortName))}
 	}
 
 	instr := &ProfiledRunnable{

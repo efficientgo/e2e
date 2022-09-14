@@ -118,7 +118,7 @@ This will start Prometheus with automatic discovery for every new and old instru
 	}
 ```
 
-To see how it works in practice, run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, three UIs should show in your browser:
+To see how it works in practice, run our example code in [standalone.go](examples/thanos/standalone.go) by running `make run-example`. At the end, four UIs should show in your browser:
 
 * Thanos one,
 * Monitoring (Prometheus)
@@ -160,7 +160,7 @@ This will run your code in a container allowing to use the same monitoring metho
 Similarly to [Monitoring](#monitoring), you can wrap your runnable (or instrumented runnable) with `e2eprof.AsProfiled` if your service uses HTTP pprof handlers (common in Go). When wrapped, you can start continuous profiler using [`e2eprof`](profiling) package:
 
 ```go
-mon, err := e2eprof.Start(e)
+prof, err := e2eprof.Start(e)
 ```
 
 This will start Parca with automatic discovery for every new and old profiled runnables. Run `OpenUserInterfaceInBrowser()` to open the Parca UI in the browser:
