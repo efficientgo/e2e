@@ -1,14 +1,14 @@
 // Copyright (c) The EfficientGo Authors.
 // Licensed under the Apache License 2.0.
 
-package e2e
+package e2emon
 
 import (
 	"math"
 	"time"
 
 	"github.com/efficientgo/core/backoff"
-	"github.com/efficientgo/e2e/matchers"
+	"github.com/efficientgo/e2e/monitoring/matchers"
 	io_prometheus_client "github.com/prometheus/client_model/go"
 )
 

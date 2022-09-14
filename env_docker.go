@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/efficientgo/core/backoff"
 	"github.com/efficientgo/core/errors"
@@ -170,23 +168,23 @@ func (e *DockerEnvironment) AddCloser(f func()) {
 
 func (e *DockerEnvironment) Runnable(name string) RunnableBuilder {
 	if e.closed {
-		return Errorer{name: name, err: errors.New("environment close was invoked already.")}
+		return errorer{name: name, err: errors.New("environment close was invoked already.")}
 	}
 
 	if e.isRegistered(name) {
-		return Errorer{name: name, err: errors.Newf("there is already one runnable created with the same name %v", name)}
+		return errorer{name: name, err: errors.Newf("there is already one runnable created with the same name %v", name)}
 	}
 
 	d := &dockerRunnable{
-		env:       e,
-		name:      name,
-		logger:    e.logger,
-		ports:     map[string]int{},
-		hostPorts: map[string]int{},
+		env:        e,
+		name:       name,
+		logger:     e.logger,
+		ports:      map[string]int{},
+		hostPorts:  map[string]int{},
+		extensions: map[any]any{},
 	}
-	d.concreteType = d
 	if err := os.MkdirAll(d.Dir(), 0750); err != nil {
-		return Errorer{name: name, err: err}
+		return errorer{name: name, err: err}
 	}
 	e.register(name)
 	return d
@@ -197,34 +195,36 @@ func (e *DockerEnvironment) AddListener(listener EnvironmentListener) {
 	e.listeners = append(e.listeners, listener)
 }
 
-type Errorer struct {
+type errorer struct {
 	name string
 	err  error
 }
 
-func NewErrorer(name string, err error) Errorer {
-	return Errorer{
+// NewFailedRunnable returns runnable that failed in construction.
+func NewFailedRunnable(name string, err error) Runnable {
+	return errorer{
 		name: name,
 		err:  err,
 	}
 }
 
-func (e Errorer) id() uintptr                               { return 0 }
-func (e Errorer) Name() string                              { return e.name }
-func (Errorer) Dir() string                                 { return "" }
-func (Errorer) InternalDir() string                         { return "" }
-func (e Errorer) Start() error                              { return e.err }
-func (e Errorer) WaitReady() error                          { return e.err }
-func (e Errorer) Kill() error                               { return e.err }
-func (e Errorer) Stop() error                               { return e.err }
-func (e Errorer) Exec(Command, ...ExecOption) error         { return e.err }
-func (Errorer) Endpoint(string) string                      { return "" }
-func (Errorer) InternalEndpoint(string) string              { return "" }
-func (Errorer) IsRunning() bool                             { return false }
-func (e Errorer) Init(StartOptions) Runnable                { return e }
-func (e Errorer) WithPorts(map[string]int) RunnableBuilder  { return e }
-func (e Errorer) WithConcreteType(Runnable) RunnableBuilder { return e }
-func (e Errorer) Future() FutureRunnable                    { return e }
+func (e errorer) BuildErr() error                          { return e.err }
+func (e errorer) Name() string                             { return e.name }
+func (errorer) Dir() string                                { return "" }
+func (errorer) InternalDir() string                        { return "" }
+func (e errorer) Start() error                             { return e.BuildErr() }
+func (e errorer) WaitReady() error                         { return e.BuildErr() }
+func (e errorer) Kill() error                              { return e.BuildErr() }
+func (e errorer) Stop() error                              { return e.BuildErr() }
+func (e errorer) Exec(Command, ...ExecOption) error        { return e.BuildErr() }
+func (errorer) Endpoint(string) string                     { return "" }
+func (errorer) InternalEndpoint(string) string             { return "" }
+func (errorer) IsRunning() bool                            { return false }
+func (errorer) SetMetadata(_, _ any)                       {}
+func (errorer) GetMetadata(any) (any, bool)                { return nil, false }
+func (e errorer) Init(StartOptions) Runnable               { return e }
+func (e errorer) WithPorts(map[string]int) RunnableBuilder { return e }
+func (e errorer) Future() FutureRunnable                   { return e }
 
 func (e *DockerEnvironment) isRegistered(name string) bool {
 	_, ok := e.registered[name]
@@ -340,11 +340,15 @@ type dockerRunnable struct {
 	// hostPorts Maps port name to dynamically binded local ports.
 	hostPorts map[string]int
 
-	concreteType Runnable
+	extensions map[any]any
 }
 
 func (d *dockerRunnable) Name() string {
 	return d.name
+}
+
+func (d *dockerRunnable) BuildErr() error {
+	return nil
 }
 
 func (d *dockerRunnable) Dir() string {
@@ -374,13 +378,13 @@ func (d *dockerRunnable) WithPorts(ports map[string]int) RunnableBuilder {
 	return d
 }
 
-func (d *dockerRunnable) WithConcreteType(r Runnable) RunnableBuilder {
-	d.concreteType = r
-	return d
+func (d *dockerRunnable) SetMetadata(key, value any) {
+	d.extensions[key] = value
 }
 
-func (d *dockerRunnable) id() uintptr {
-	return uintptr(unsafe.Pointer(d))
+func (d *dockerRunnable) GetMetadata(key any) (any, bool) {
+	v, ok := d.extensions[key]
+	return v, ok
 }
 
 func (d *dockerRunnable) Future() FutureRunnable {
@@ -397,14 +401,6 @@ func (d *dockerRunnable) Start() (err error) {
 		return errors.Newf("%v is running. Stop or kill it first to restart.", d.Name())
 	}
 
-	i, ok := d.concreteType.(identificable)
-	if !ok {
-		return errors.Newf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; not implementing identificable", d.concreteType)
-	}
-	if i.id() != d.id() {
-		return errors.Newf("concrete type has at least embed runnable or future runnable instance provided by Runnable builder, got %T; id %v, expected %v", d.concreteType, i.id(), d.id())
-	}
-
 	d.logger.Log("Starting", d.Name())
 
 	// In case of any error, if the container was already created, we
@@ -417,7 +413,7 @@ func (d *dockerRunnable) Start() (err error) {
 	}()
 
 	// Make sure the image is available locally; if not wait for it to download.
-	if err = d.prePullImage(context.TODO()); err != nil {
+	if err := d.prePullImage(context.TODO()); err != nil {
 		return err
 	}
 
@@ -425,17 +421,17 @@ func (d *dockerRunnable) Start() (err error) {
 	l := &LinePrefixLogger{prefix: d.Name() + ": ", logger: d.logger}
 	cmd.Stdout = l
 	cmd.Stderr = l
-	if err = cmd.Start(); err != nil {
+	if err := cmd.Start(); err != nil {
 		return err
 	}
 	d.usedNetworkName = d.env.networkName
 
 	// Wait until the container has been started.
-	if err = d.waitForRunning(); err != nil {
+	if err := d.waitForRunning(); err != nil {
 		return err
 	}
 
-	if err := d.env.registerStarted(d.concreteType); err != nil {
+	if err := d.env.registerStarted(d); err != nil {
 		return err
 	}
 
@@ -456,6 +452,7 @@ func (d *dockerRunnable) Start() (err error) {
 			return errors.Wrapf(err, "unable to get mapping for port %d; service: %s", containerPort, d.Name())
 		}
 	}
+
 	d.logger.Log("Ports for container", d.containerName(), ">> Local ports:", d.ports, "Ports available from host:", d.hostPorts)
 	return nil
 }
@@ -696,7 +693,7 @@ func getTmpDirectory() (string, error) {
 		}
 	}
 
-	tmpDir, err := ioutil.TempDir(dir, "e2e_")
+	tmpDir, err := os.MkdirTemp(dir, "e2e_")
 	if err != nil {
 		return "", err
 	}

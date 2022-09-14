@@ -13,6 +13,7 @@ import (
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
 	e2einteractive "github.com/efficientgo/e2e/interactive"
+	e2emon "github.com/efficientgo/e2e/monitoring"
 )
 
 func TestExampleApp(t *testing.T) {
@@ -23,11 +24,12 @@ func TestExampleApp(t *testing.T) {
 	testutil.Ok(t, err)
 
 	fmt.Println("=== Start example application...")
-	app := e2e.NewInstrumentedRunnable(e, "example_app").
-		WithPorts(map[string]int{"http": 8080}, "http").
+	app := e2emon.AsInstrumented(e.Runnable("example_app").
+		WithPorts(map[string]int{"http": 8080}).
 		Init(e2e.StartOptions{
 			Image: "quay.io/brancz/prometheus-example-app:v0.3.0",
-		})
+		}), "http")
+
 	testutil.Ok(t, e2e.StartAndWaitReady(app))
 
 	config := fmt.Sprintf(`
@@ -49,12 +51,12 @@ scrape_configs:
 	fmt.Println("=== Start Prometheus")
 	// Create Prometheus instance and wait for it to be ready.
 	p1 := e2edb.NewPrometheus(e, "prometheus-1")
-	testutil.Ok(t, p1.SetConfig(config))
+	testutil.Ok(t, p1.SetConfigEncoded([]byte(config)))
 	testutil.Ok(t, e2e.StartAndWaitReady(p1))
 
 	fmt.Println("=== Ensure that Prometheus already scraped something")
 	// Ensure that Prometheus already scraped something.
-	testutil.Ok(t, p1.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
+	testutil.Ok(t, p1.WaitSumMetrics(e2emon.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
 
 	// Open example in browser.
 	exampleAppURL := fmt.Sprintf("http://%s", app.Endpoint("http"))
@@ -63,15 +65,15 @@ scrape_configs:
 
 	fmt.Println("=== I need at least 5 requests!")
 	testutil.Ok(t, app.WaitSumMetricsWithOptions(
-		e2e.GreaterOrEqual(5),
+		e2emon.GreaterOrEqual(5),
 		[]string{"http_requests_total"},
-		e2e.WithWaitBackoff(
+		e2emon.WithWaitBackoff(
 			&backoff.Config{
 				Min:        1 * time.Second,
 				Max:        10 * time.Second,
 				MaxRetries: 100,
 			}),
-		e2e.WaitMissingMetrics()),
+		e2emon.WaitMissingMetrics()),
 	)
 
 	// Now opening Prometheus in browser as well.

@@ -5,7 +5,7 @@ package e2e_test
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -13,6 +13,7 @@ import (
 	"github.com/efficientgo/core/testutil"
 	"github.com/efficientgo/e2e"
 	e2edb "github.com/efficientgo/e2e/db"
+	e2emon "github.com/efficientgo/e2e/monitoring"
 )
 
 func wgetFlagsCmd(hostPort string) e2e.Command {
@@ -48,7 +49,7 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Ok(t, p1.WaitReady())
 	testutil.Ok(t, p1.WaitReady())
 
-	testutil.Ok(t, p1.WaitSumMetrics(e2e.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
+	testutil.Ok(t, p1.WaitSumMetrics(e2emon.Greater(50), "prometheus_tsdb_head_samples_appended_total"))
 
 	testutil.Equals(t, "prometheus-1", p1.Name())
 	testutil.Equals(t, filepath.Join(e.SharedDir(), "data", p1.Name()), p1.Dir())
@@ -69,7 +70,7 @@ func TestDockerEnvironment(t *testing.T) {
 	testutil.Ok(t, err)
 	defer resp.Body.Close()
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	testutil.Ok(t, err)
 	testutil.Equals(t, expectedFlagsOutputProm1, string(b))
 	testutil.Equals(t, "", p1.Endpoint("not-existing"))

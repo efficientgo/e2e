@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os/exec"
@@ -132,23 +131,17 @@ type RunnableBuilder interface {
 	// WithPorts adds ports to runnable, allowing caller to
 	// use `InternalEndpoint` and `Endpoint` methods by referencing port by name.
 	WithPorts(map[string]int) RunnableBuilder
-	// WithConcreteType allows to use different type for registration in environment,
-	// so environment listeners listening to `OnRunnableChange` can have different
-	// concrete type (e.g InstrumentedRunnable).
-	WithConcreteType(r Runnable) RunnableBuilder
-
 	// Future returns future runnable
 	Future() FutureRunnable
 	// Init returns runnable.
 	Init(opts StartOptions) Runnable
 }
 
-type identificable interface {
-	id() uintptr
-}
-
 type runnable interface {
-	identificable
+	// BuildErr returns error if runnable failed to build. If error happened during build all methods like
+	// Start, WaitReady, Kill and Stop will return this error. Rest of the methods will yield empty results, so if you
+	// want to use those before any of the Start, WaitReady, Kill or Stop, you can use BuildErr to check for error explicitly.
+	BuildErr() error
 
 	// IsRunning returns if runnable was started.
 	IsRunning() bool
@@ -178,6 +171,11 @@ type runnable interface {
 	//
 	// If your service is not running, this method returns incorrect `stopped` endpoint.
 	Endpoint(portName string) string
+
+	// SetMetadata allows setting extra metadata describing runnable.
+	SetMetadata(key, value any)
+	// GetMetadata retrieves metadata by given key or return false if not found.
+	GetMetadata(key any) (any, bool)
 }
 
 type ExecOption func(o *ExecOptions)
@@ -321,7 +319,7 @@ func (p *HTTPReadinessProbe) Ready(runnable Runnable) (err error) {
 	}
 	defer errcapture.ExhaustClose(&err, res.Body, "response readiness")
 
-	body, _ := ioutil.ReadAll(res.Body)
+	body, _ := io.ReadAll(res.Body)
 	if res.StatusCode < p.expectedStatusRangeStart || res.StatusCode > p.expectedStatusRangeEnd {
 		return errors.Newf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
 	}
