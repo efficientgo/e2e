@@ -309,6 +309,11 @@ func (s *Service) InstantQuery(query string) (string, error) {
 	return string(body), err
 }
 
+// GetMonitoringRunnable returns a Prometheus monitoring runnable.
+func (s *Service) GetMonitoringRunnable() e2e.Runnable {
+	return s.p
+}
+
 func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) *InstrumentedRunnable {
 	return AsInstrumented(env.Runnable(name).WithPorts(map[string]int{"http": 8080}).Init(e2e.StartOptions{
 		// See https://github.com/google/cadvisor/blob/master/docs/runtime_options.md.
