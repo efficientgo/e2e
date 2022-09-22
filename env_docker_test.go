@@ -41,7 +41,7 @@ func TestValidateName(t *testing.T) {
 	}{
 		{
 			name:        "",
-			expectedErr: errors.New("name can have only ^[-a-zA-Z\\d]{1,16}$ characters due to docker network name constraints, got: "),
+			expectedErr: errors.New("name can't be smaller than 1 or over 16 character long due to docker network name constraints, got: "),
 		},
 		{
 			name: "e2e-testName",
@@ -52,7 +52,7 @@ func TestValidateName(t *testing.T) {
 		},
 		{
 			name:        "e2e_testNamelongerthanexpected",
-			expectedErr: errors.New("name can have only ^[-a-zA-Z\\d]{1,16}$ characters due to docker network name constraints, got: e2e_testNamelongerthanexpected"),
+			expectedErr: errors.New("name can't be smaller than 1 or over 16 character long due to docker network name constraints, got: e2e_testNamelongerthanexpected"),
 		},
 		{
 			name: func() string {
