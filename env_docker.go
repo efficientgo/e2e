@@ -67,8 +67,8 @@ func generateName() (string, error) {
 }
 
 func validateName(name string) error {
-	if len(name) < 1 && len(name) > 16 {
-		return errors.Newf("name can't be smaller than 1 and over 16 character long due to docker network name constraints, got: %v", name)
+	if len(name) < 1 || len(name) > 16 {
+		return errors.Newf("name can't be smaller than 1 or over 16 character long due to docker network name constraints, got: %v", name)
 	}
 	if !envNamePattern.MatchString(name) {
 		return errors.Newf("name can have only %v characters due to docker network name constraints, got: %v", envNamePattern.String(), name)
