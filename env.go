@@ -26,6 +26,8 @@ type environmentOptions struct {
 	logger  Logger
 	verbose bool
 	name    string
+
+	volumes []string
 }
 
 // WithLogger tells environment to use custom logger to default one (stdout).
@@ -53,6 +55,12 @@ func WithVerbose() EnvironmentOption {
 func WithName(name string) EnvironmentOption {
 	return func(o *environmentOptions) {
 		o.name = name
+	}
+}
+
+func WithVolumes(volumes ...string) EnvironmentOption {
+	return func(o *environmentOptions) {
+		o.volumes = volumes
 	}
 }
 

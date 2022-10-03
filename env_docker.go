@@ -39,7 +39,8 @@ type DockerEnvironment struct {
 	logger      Logger
 	networkName string
 
-	hostAddr string
+	hostAddr      string
+	dockerVolumes []string
 
 	registered map[string]struct{}
 	listeners  []EnvironmentListener
@@ -104,10 +105,11 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 	}
 
 	d := &DockerEnvironment{
-		logger:      e.logger,
-		networkName: e.name,
-		verbose:     e.verbose,
-		registered:  map[string]struct{}{},
+		logger:        e.logger,
+		networkName:   e.name,
+		verbose:       e.verbose,
+		registered:    map[string]struct{}{},
+		dockerVolumes: e.volumes,
 	}
 
 	// Force a shutdown in order to cleanup from a spurious situation in case
@@ -269,6 +271,10 @@ func (e *DockerEnvironment) buildDockerRunArgs(name string, ports map[string]int
 
 	// Mount the docker env working directory into the container. It's shared across all containers to allow easier scenarios.
 	args = append(args, "-v", fmt.Sprintf("%s:%s:z", e.dir, e.dir))
+
+	for _, v := range e.dockerVolumes {
+		args = append(args, "-v", v)
+	}
 
 	for _, v := range opts.Volumes {
 		args = append(args, "-v", v)
