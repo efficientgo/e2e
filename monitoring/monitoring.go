@@ -67,8 +67,8 @@ scrape_configs:
 	}
 
 	args := map[string]string{
-		"--config.file":                     filepath.Join(f.InternalDir(), "prometheus.yml"),
-		"--storage.tsdb.path":               f.InternalDir(),
+		"--config.file":                     filepath.Join(f.Dir(), "prometheus.yml"),
+		"--storage.tsdb.path":               f.Dir(),
 		"--storage.tsdb.max-block-duration": "2h", // No compaction - mostly not needed for quick test.
 		"--log.level":                       "info",
 		"--web.listen-address":              fmt.Sprintf(":%d", ports["http"]),

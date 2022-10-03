@@ -92,7 +92,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 
 	// Hacky: Create user that matches ID with host ID to be able to remove .minio.sys details on the start.
 	// Proper solution would be to contribute/create our own minio image which is non root.
-	command := fmt.Sprintf("useradd -G root -u %v me && mkdir -p %s && chown -R me %s &&", userID, f.InternalDir(), f.InternalDir())
+	command := fmt.Sprintf("useradd -G root -u %v me && mkdir -p %s && chown -R me %s &&", userID, f.Dir(), f.Dir())
 
 	if o.minioOptions.enableSSE {
 		envVars = append(envVars, []string{
@@ -111,7 +111,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 			// Create the required bucket before starting minio.
 			Command: e2e.NewCommandWithoutEntrypoint("sh", "-c", command+fmt.Sprintf(
 				"su - me -s /bin/sh -c 'mkdir -p %s && %s /opt/bin/minio server --address :%v --quiet %v'",
-				filepath.Join(f.InternalDir(), bktName), strings.Join(envVars, " "), ports[AccessPortName], f.InternalDir()),
+				filepath.Join(f.Dir(), bktName), strings.Join(envVars, " "), ports[AccessPortName], f.Dir()),
 			),
 			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/minio/health/live", 200, 200),
 		},

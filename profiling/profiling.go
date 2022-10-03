@@ -46,7 +46,7 @@ func NewParca(env e2e.Environment, name string, image string, flagOverride map[s
 	f := env.Runnable(name).WithPorts(map[string]int{"http": 7070}).Future()
 
 	args := map[string]string{
-		"--config-path": filepath.Join(f.InternalDir(), "parca.yml"),
+		"--config-path": filepath.Join(f.Dir(), "parca.yml"),
 	}
 	if flagOverride != nil {
 		args = e2e.MergeFlagsWithoutRemovingEmpty(args, flagOverride)

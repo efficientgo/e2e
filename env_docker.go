@@ -23,7 +23,6 @@ import (
 )
 
 const (
-	dockerLocalSharedDir   = "/shared"
 	dockerMacOSGatewayAddr = "host.docker.internal"
 )
 
@@ -268,8 +267,8 @@ func (e *DockerEnvironment) SharedDir() string {
 func (e *DockerEnvironment) buildDockerRunArgs(name string, ports map[string]int, opts StartOptions) []string {
 	args := []string{"--rm", "--net=" + e.networkName, "--name=" + dockerNetworkContainerHost(e.networkName, name), "--hostname=" + name}
 
-	// Mount the shared/ directory into the container. We share all containers dir to each other to allow easier scenarios.
-	args = append(args, "-v", fmt.Sprintf("%s:%s:z", e.dir, dockerLocalSharedDir))
+	// Mount the docker env working directory into the container. It's shared across all containers to allow easier scenarios.
+	args = append(args, "-v", fmt.Sprintf("%s:%s:z", e.dir, e.dir))
 
 	for _, v := range opts.Volumes {
 		args = append(args, "-v", v)
@@ -356,7 +355,7 @@ func (d *dockerRunnable) Dir() string {
 }
 
 func (d *dockerRunnable) InternalDir() string {
-	return filepath.Join(dockerLocalSharedDir, "data", d.Name())
+	return d.Dir()
 }
 
 func (d *dockerRunnable) Init(opts StartOptions) Runnable {
