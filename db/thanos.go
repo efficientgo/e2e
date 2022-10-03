@@ -94,7 +94,7 @@ func NewThanosStore(env e2e.Environment, name string, bktConfigYaml []byte, opts
 		"--grpc-address":    fmt.Sprintf(":%d", ports["grpc"]),
 		"--http-address":    fmt.Sprintf(":%d", ports["http"]),
 		"--log.level":       "info",
-		"--data-dir":        f.InternalDir(),
+		"--data-dir":        f.Dir(),
 		"--objstore.config": string(bktConfigYaml),
 		// Accelerated sync time for quicker test (3m by default).
 		//"--sync-block-duration":               "3s",
