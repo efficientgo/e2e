@@ -195,6 +195,7 @@ type opt struct {
 	scrapeInterval  time.Duration
 	customRegistry  *prometheus.Registry
 	customPromImage string
+	useCadvisor     bool
 }
 
 // WithScrapeInterval changes how often metrics are scrape by Prometheus. 5s by default.
@@ -220,12 +221,21 @@ func WithPrometheusImage(image string) Option {
 	}
 }
 
+func WithUseCadvisor(use bool) Option {
+	return func(o *opt) {
+		o.useCadvisor = use
+	}
+}
+
 type Option func(*opt)
 
 // Start deploys monitoring service which deploys Prometheus that monitors all
 // InstrumentedRunnable instances in an environment created with AsInstrumented.
 func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
-	opt := opt{scrapeInterval: 5 * time.Second}
+	opt := opt{
+		scrapeInterval: 5 * time.Second,
+		useCadvisor:    true,
+	}
 	for _, o := range opts {
 		o(&opt)
 	}
@@ -271,8 +281,12 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	}
 	env.AddListener(l)
 
-	c := newCadvisor(env, "cadvisor")
-	if err := e2e.StartAndWaitReady(c, p); err != nil {
+	runnables := []e2e.Runnable{p}
+	if opt.useCadvisor {
+		c := newCadvisor(env, "cadvisor")
+		runnables = append(runnables, c)
+	}
+	if err := e2e.StartAndWaitReady(runnables...); err != nil {
 		return nil, errors.Wrap(err, "starting cadvisor and monitoring and waiting until ready")
 	}
 
