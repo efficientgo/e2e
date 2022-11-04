@@ -221,9 +221,9 @@ func WithPrometheusImage(image string) Option {
 	}
 }
 
-func WithUseCadvisor(use bool) Option {
+func WithCadvisorDisabled() Option {
 	return func(o *opt) {
-		o.useCadvisor = use
+		o.useCadvisor = false
 	}
 }
 
@@ -281,13 +281,14 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	}
 	env.AddListener(l)
 
-	runnables := []e2e.Runnable{p}
 	if opt.useCadvisor {
 		c := newCadvisor(env, "cadvisor")
-		runnables = append(runnables, c)
+		if err := e2e.StartAndWaitReady(c); err != nil {
+			return nil, errors.Wrap(err, "starting cadvisor and waiting until ready")
+		}
 	}
-	if err := e2e.StartAndWaitReady(runnables...); err != nil {
-		return nil, errors.Wrap(err, "starting cadvisor and monitoring and waiting until ready")
+	if err := e2e.StartAndWaitReady(p); err != nil {
+		return nil, errors.Wrap(err, "starting monitoring and waiting until ready")
 	}
 
 	select {
