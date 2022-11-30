@@ -291,7 +291,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	env.AddListener(l)
 
 	if opt.useCadvisor {
-		if inWSL {
+		if e2einteractive.HostOSPlatform() == "WSL2" {
 			return nil, errors.New("cadvisor is not supported in WSL 2 environments")
 		}
 		c := newCadvisor(env, "cadvisor")

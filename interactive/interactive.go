@@ -23,12 +23,10 @@ import (
 func OpenInBrowser(url string) error {
 	fmt.Println("Opening", url, "in browser.")
 	var err error
-	switch runtime.GOOS {
+	switch HostOSPlatform() {
+	case "WSL2":
+		err = exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url).Run()
 	case "linux":
-		if inWSL, _ := WSL2(); inWSL {
-			err = exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url).Run()
-			break
-		}
 		err = exec.Command("xdg-open", url).Run()
 	case "windows":
 		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Run()
@@ -40,15 +38,25 @@ func OpenInBrowser(url string) error {
 	return err
 }
 
-func WSL2() (bool, error) {
+// HostOSPlatform returns the host's OS platform akin to `runtime.GOOS`, with
+// added awareness of WSL 2 environments. The possible values are the same as
+// `runtime.GOOS` plus "WSL2".
+func HostOSPlatform() string {
+	if wsl2() {
+		return "WSL2"
+	}
+	return runtime.GOOS
+}
+
+func wsl2() bool {
 	if runtime.GOOS != "linux" {
-		return false, nil
+		return false
 	}
 	version, err := os.ReadFile("/proc/version")
 	if err != nil {
-		return false, errors.Wrapf(err, "detecting WSL2: %s", string(version))
+		return false
 	}
-	return bytes.Contains(version, []byte("WSL2")), nil
+	return bytes.Contains(version, []byte("WSL2"))
 }
 
 // RunUntilEndpointHit stalls current goroutine executions and prints the URL to local address. When URL is hit

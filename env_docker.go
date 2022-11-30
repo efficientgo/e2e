@@ -130,15 +130,10 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 		return nil, errors.Wrapf(err, "create docker network '%s'", d.networkName)
 	}
 
-	switch runtime.GOOS {
-	case "darwin":
+	switch e2einteractive.HostOSPlatform() {
+	case "darwin", "WSL2":
 		d.hostAddr = dockerGatewayAddr
-	default:
-		inWSL, _ := e2einteractive.WSL2()
-		if inWSL {
-			d.hostAddr = dockerGatewayAddr
-			break
-		}
+	case "linux":
 		out, err := d.exec("docker", "network", "inspect", d.networkName).CombinedOutput()
 		if err != nil {
 			e.logger.Log(string(out))
