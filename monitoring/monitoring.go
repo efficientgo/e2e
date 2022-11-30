@@ -265,8 +265,7 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	// end up only binding to the IPv6 in the WSL host, which later cannot be acessed
 	// via IPv4 to confirm Prometheus can scrape the local endpoint.
 	// Explicitly asking for an IPv4 listener works.
-	inWSL, _ := e2einteractive.WSL2()
-	if inWSL {
+	if e2einteractive.HostOSPlatform() == "WSL2" {
 		networkType = "tcp4"
 	}
 	list, err := net.Listen(networkType, "0.0.0.0:0")
