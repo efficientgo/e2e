@@ -80,8 +80,6 @@ type Environment interface {
 	AddCloser(func())
 	// Close shutdowns isolated environment and cleans its resources.
 	Close()
-	// WSL2 returns true if the environment is WSL2.
-	WSL2() bool
 }
 
 type EnvironmentListener interface {

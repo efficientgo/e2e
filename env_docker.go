@@ -134,7 +134,8 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 	case "darwin":
 		d.hostAddr = dockerGatewayAddr
 	default:
-		if d.WSL2() {
+		inWSL, _ := e2einteractive.WSL2()
+		if inWSL {
 			d.hostAddr = dockerGatewayAddr
 			break
 		}
@@ -170,15 +171,6 @@ func (e *DockerEnvironment) Name() string     { return e.networkName }
 
 func (e *DockerEnvironment) AddCloser(f func()) {
 	e.closers = append(e.closers, f)
-}
-
-func (e *DockerEnvironment) WSL2() bool {
-	inWSL, err := e2einteractive.WSL2()
-	if err != nil {
-		e.logger.Log(err)
-		return false
-	}
-	return inWSL
 }
 
 func (e *DockerEnvironment) Runnable(name string) RunnableBuilder {
