@@ -46,7 +46,7 @@ func WSL2() (bool, error) {
 	}
 	version, err := os.ReadFile("/proc/version")
 	if err != nil {
-		return false, errors.Wrapf(err, "detecting WSL2: %s", string(out))
+		return false, errors.Wrapf(err, "detecting WSL2: %s", string(version))
 	}
 	return bytes.Contains(version, []byte("WSL2")), nil
 }
