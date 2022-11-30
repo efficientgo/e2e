@@ -44,11 +44,11 @@ func WSL2() (bool, error) {
 	if runtime.GOOS != "linux" {
 		return false, nil
 	}
-	out, err := exec.Command("cat", "/proc/version").CombinedOutput()
+	version, err := os.ReadFile("/proc/version")
 	if err != nil {
 		return false, errors.Wrapf(err, "detecting WSL2: %s", string(out))
 	}
-	return bytes.Contains(out, []byte("WSL2")), nil
+	return bytes.Contains(version, []byte("WSL2")), nil
 }
 
 // RunUntilEndpointHit stalls current goroutine executions and prints the URL to local address. When URL is hit
