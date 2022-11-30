@@ -4,6 +4,7 @@
 package e2einteractive
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -24,6 +25,10 @@ func OpenInBrowser(url string) error {
 	var err error
 	switch runtime.GOOS {
 	case "linux":
+		if inWSL, _ := WSL2(); inWSL {
+			err = exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url).Run()
+			break
+		}
 		err = exec.Command("xdg-open", url).Run()
 	case "windows":
 		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Run()
@@ -33,6 +38,17 @@ func OpenInBrowser(url string) error {
 		err = errors.New("unsupported platform")
 	}
 	return err
+}
+
+func WSL2() (bool, error) {
+	if runtime.GOOS != "linux" {
+		return false, nil
+	}
+	out, err := exec.Command("cat", "/proc/version").CombinedOutput()
+	if err != nil {
+		return false, errors.Wrapf(err, "detecting WSL2: %s", string(out))
+	}
+	return bytes.Contains(out, []byte("WSL2")), nil
 }
 
 // RunUntilEndpointHit stalls current goroutine executions and prints the URL to local address. When URL is hit
