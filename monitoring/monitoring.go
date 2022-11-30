@@ -291,6 +291,9 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 	env.AddListener(l)
 
 	if opt.useCadvisor {
+		if env.WSL2() {
+			return nil, errors.New("cadvisor is not supported in WSL 2 environments")
+		}
 		c := newCadvisor(env, "cadvisor")
 		if err := e2e.StartAndWaitReady(c); err != nil {
 			return nil, errors.Wrap(err, "starting cadvisor and waiting until ready")
