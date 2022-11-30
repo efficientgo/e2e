@@ -134,8 +134,7 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 	case "darwin":
 		d.hostAddr = dockerGatewayAddr
 	default:
-		inWSL2 := d.WSL2()
-		if inWSL2 {
+		if d.WSL2() {
 			d.hostAddr = dockerGatewayAddr
 			break
 		}
