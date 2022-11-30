@@ -259,12 +259,12 @@ func Start(env e2e.Environment, opts ...Option) (_ *Service, err error) {
 		h.ServeHTTP(w, req)
 	}))
 
-	// Listen on all addresses, since we need to connect to it from docker container.
-	networkType := "tcp"
+	// Listen on all tcp4 addresses, since we need to connect to it from Docker container.
 	// For unknown reasons, when using WSL 2, if the network type is "tcp" it will
 	// end up only binding to the IPv6 in the WSL host, which later cannot be acessed
 	// via IPv4 to confirm Prometheus can scrape the local endpoint.
 	// Explicitly asking for an IPv4 listener works.
+	networkType := "tcp"
 	if e2einteractive.HostOSPlatform() == "WSL2" {
 		networkType = "tcp4"
 	}
