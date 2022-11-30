@@ -39,8 +39,8 @@ func OpenInBrowser(url string) error {
 }
 
 // HostOSPlatform returns the host's OS platform akin to `runtime.GOOS`, with
-// added awareness of WSL 2 environments. The possible values are the same as
-// `runtime.GOOS` plus "WSL2".
+// added awareness of Windows Subsystem for Linux (WSL) 2 environments.
+// The possible values are the same as `runtime.GOOS`, plus "WSL2".
 func HostOSPlatform() string {
 	if wsl2() {
 		return "WSL2"
