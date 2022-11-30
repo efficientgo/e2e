@@ -20,10 +20,11 @@ import (
 
 	"github.com/efficientgo/core/backoff"
 	"github.com/efficientgo/core/errors"
+	e2einteractive "github.com/efficientgo/e2e/interactive"
 )
 
 const (
-	dockerMacOSGatewayAddr = "host.docker.internal"
+	dockerGatewayAddr = "host.docker.internal"
 )
 
 var (
@@ -131,8 +132,13 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 
 	switch runtime.GOOS {
 	case "darwin":
-		d.hostAddr = dockerMacOSGatewayAddr
+		d.hostAddr = dockerGatewayAddr
 	default:
+		inWSL2 := d.WSL2()
+		if inWSL2 {
+			d.hostAddr = dockerGatewayAddr
+			break
+		}
 		out, err := d.exec("docker", "network", "inspect", d.networkName).CombinedOutput()
 		if err != nil {
 			e.logger.Log(string(out))
@@ -165,6 +171,15 @@ func (e *DockerEnvironment) Name() string     { return e.networkName }
 
 func (e *DockerEnvironment) AddCloser(f func()) {
 	e.closers = append(e.closers, f)
+}
+
+func (e *DockerEnvironment) WSL2() bool {
+	inWSL, err := e2einteractive.WSL2()
+	if err != nil {
+		e.logger.Log(err)
+		return false
+	}
+	return inWSL
 }
 
 func (e *DockerEnvironment) Runnable(name string) RunnableBuilder {
