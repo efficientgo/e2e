@@ -663,7 +663,13 @@ func (d *dockerRunnable) Exec(command Command, opts ...ExecOption) error {
 	args := []string{"exec", d.containerName()}
 	args = append(args, command.Cmd)
 	args = append(args, command.Args...)
+	if o.Stdin != nil {
+		args = append(args[:1], append([]string{"-i"}, args[1:]...)...)
+	}
 	cmd := d.env.exec("docker", args...)
+	if o.Stdin != nil {
+		cmd.Stdin = o.Stdin
+	}
 	cmd.Stdout = o.Stdout
 	cmd.Stderr = o.Stderr
 	return cmd.Run()
