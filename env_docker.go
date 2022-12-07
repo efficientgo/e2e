@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"github.com/efficientgo/e2e/host"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/efficientgo/e2e/host"
 
 	"github.com/efficientgo/core/backoff"
 	"github.com/efficientgo/core/errors"

@@ -5,7 +5,6 @@ package e2emon
 
 import (
 	"fmt"
-	"github.com/efficientgo/e2e/host"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/efficientgo/e2e/host"
 
 	"github.com/efficientgo/core/errcapture"
 	"github.com/efficientgo/core/errors"

@@ -6,7 +6,6 @@ package e2einteractive
 import (
 	"context"
 	"fmt"
-	"github.com/efficientgo/e2e/host"
 	"net"
 	"net/http"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/efficientgo/e2e/host"
 
 	"github.com/efficientgo/core/errors"
 )
