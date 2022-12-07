@@ -18,12 +18,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/efficientgo/e2e/host"
+
 	"github.com/efficientgo/core/backoff"
 	"github.com/efficientgo/core/errors"
 )
 
 const (
-	dockerMacOSGatewayAddr = "host.docker.internal"
+	dockerGatewayAddr = "host.docker.internal"
 )
 
 var (
@@ -129,10 +131,10 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 		return nil, errors.Wrapf(err, "create docker network '%s'", d.networkName)
 	}
 
-	switch runtime.GOOS {
-	case "darwin":
-		d.hostAddr = dockerMacOSGatewayAddr
-	default:
+	switch host.OSPlatform() {
+	case "darwin", "WSL2":
+		d.hostAddr = dockerGatewayAddr
+	default: // the "linux" behavior is default
 		out, err := d.exec("docker", "network", "inspect", d.networkName).CombinedOutput()
 		if err != nil {
 			e.logger.Log(string(out))

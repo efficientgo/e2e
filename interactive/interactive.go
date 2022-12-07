@@ -11,9 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime"
 	"sync"
 	"syscall"
+
+	"github.com/efficientgo/e2e/host"
 
 	"github.com/efficientgo/core/errors"
 )
@@ -22,7 +23,9 @@ import (
 func OpenInBrowser(url string) error {
 	fmt.Println("Opening", url, "in browser.")
 	var err error
-	switch runtime.GOOS {
+	switch host.OSPlatform() {
+	case "WSL2":
+		err = exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url).Run()
 	case "linux":
 		err = exec.Command("xdg-open", url).Run()
 	case "windows":
