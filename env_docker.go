@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/efficientgo/e2e/host"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/efficientgo/core/backoff"
 	"github.com/efficientgo/core/errors"
-	e2einteractive "github.com/efficientgo/e2e/interactive"
 )
 
 const (
@@ -130,10 +130,10 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 		return nil, errors.Wrapf(err, "create docker network '%s'", d.networkName)
 	}
 
-	switch e2einteractive.HostOSPlatform() {
+	switch host.OSPlatform() {
 	case "darwin", "WSL2":
 		d.hostAddr = dockerGatewayAddr
-	case "linux":
+	default: // the "linux" behavior is default
 		out, err := d.exec("docker", "network", "inspect", d.networkName).CombinedOutput()
 		if err != nil {
 			e.logger.Log(string(out))

@@ -4,15 +4,14 @@
 package e2einteractive
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"github.com/efficientgo/e2e/host"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime"
 	"sync"
 	"syscall"
 
@@ -23,7 +22,7 @@ import (
 func OpenInBrowser(url string) error {
 	fmt.Println("Opening", url, "in browser.")
 	var err error
-	switch HostOSPlatform() {
+	switch host.OSPlatform() {
 	case "WSL2":
 		err = exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url).Run()
 	case "linux":
@@ -36,27 +35,6 @@ func OpenInBrowser(url string) error {
 		err = errors.New("unsupported platform")
 	}
 	return err
-}
-
-// HostOSPlatform returns the host's OS platform akin to `runtime.GOOS`, with
-// added awareness of Windows Subsystem for Linux (WSL) 2 environments.
-// The possible values are the same as `runtime.GOOS`, plus "WSL2".
-func HostOSPlatform() string {
-	if wsl2() {
-		return "WSL2"
-	}
-	return runtime.GOOS
-}
-
-func wsl2() bool {
-	if runtime.GOOS != "linux" {
-		return false
-	}
-	version, err := os.ReadFile("/proc/version")
-	if err != nil {
-		return false
-	}
-	return bytes.Contains(version, []byte("WSL2"))
 }
 
 // RunUntilEndpointHit stalls current goroutine executions and prints the URL to local address. When URL is hit
