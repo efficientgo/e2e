@@ -80,11 +80,12 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 	}
 
 	userID := strconv.Itoa(os.Getuid())
-	ports := map[string]int{AccessPortName: 8090}
+	const consolePortName = "console"
+	ports := map[string]int{AccessPortName: 8090, consolePortName: 8080}
 	envVars := []string{
 		"MINIO_ROOT_USER=" + MinioAccessKey,
 		"MINIO_ROOT_PASSWORD=" + MinioSecretKey,
-		"MINIO_BROWSER=" + "off",
+		"MINIO_BROWSER=" + "on",
 		"ENABLE_HTTPS=" + "0",
 	}
 
@@ -109,11 +110,25 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 		e2e.StartOptions{
 			Image: o.image,
 			// Create the required bucket before starting minio.
-			Command: e2e.NewCommandWithoutEntrypoint("sh", "-c", command+fmt.Sprintf(
-				"su - me -s /bin/sh -c 'mkdir -p %s && %s /opt/bin/minio server --address :%v --quiet %v'",
-				filepath.Join(f.Dir(), bktName), strings.Join(envVars, " "), ports[AccessPortName], f.Dir()),
+			Command: e2e.NewCommandWithoutEntrypoint(
+				"sh",
+				"-c",
+				command+fmt.Sprintf(
+					"su - me -s /bin/sh -c 'mkdir -p %s && %s /opt/bin/minio server --address :%v --console-address :%v --quiet %v'",
+					filepath.Join(f.Dir(), bktName),
+					strings.Join(envVars, " "),
+					ports[AccessPortName],
+					ports[consolePortName],
+					f.Dir(),
+				),
 			),
-			Readiness: e2e.NewHTTPReadinessProbe(AccessPortName, "/minio/health/live", 200, 200),
+			// Using console as readiness check until MinIO fixes https://github.com/minio/minio/issues/16213.
+			Readiness: e2e.NewHTTPReadinessProbe(
+				consolePortName,
+				"/",
+				200,
+				200,
+			),
 		},
 	), AccessPortName)
 }
