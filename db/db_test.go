@@ -4,6 +4,9 @@
 package e2edb
 
 import (
+	"context"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"testing"
 
 	"github.com/efficientgo/core/testutil"
@@ -17,6 +20,20 @@ func TestMinio(t *testing.T) {
 	testutil.Ok(t, err)
 	t.Cleanup(e.Close)
 
-	minio := NewMinio(e, "mintest", "bkt")
-	testutil.Ok(t, e2e.StartAndWaitReady(minio))
+	minioContainer := NewMinio(e, "mintest", "bkt")
+	testutil.Ok(t, e2e.StartAndWaitReady(minioContainer))
+
+	endpoint := minioContainer.Endpoint("http")
+	accessKeyID := MinioAccessKey
+	secretAccessKey := MinioSecretKey
+	minioClient, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
+		Secure: false,
+	})
+	testutil.Ok(t, err)
+
+	testutil.Ok(
+		t,
+		minioClient.MakeBucket(context.Background(), "test-bucket", minio.MakeBucketOptions{}),
+	)
 }
