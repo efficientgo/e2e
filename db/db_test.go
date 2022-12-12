@@ -5,9 +5,10 @@ package e2edb
 
 import (
 	"context"
+	"testing"
+
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"testing"
 
 	"github.com/efficientgo/core/testutil"
 	"github.com/efficientgo/e2e"
