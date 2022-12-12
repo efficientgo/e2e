@@ -122,6 +122,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 					f.Dir(),
 				),
 			),
+			// Using console as readiness check until MinIO fixes https://github.com/minio/minio/issues/16213.
 			Readiness: e2e.NewHTTPReadinessProbe(
 				consolePortName,
 				"/",
