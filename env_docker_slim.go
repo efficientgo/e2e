@@ -60,7 +60,7 @@ func (e *DockerEnvironment) buildDockerSlimRunArgs(name string, ports map[string
 	}
 
 	// Mount the shared/ directory into the container. We share all containers dir to each other to allow easier scenarios.
-	args = append(args, "--mount", fmt.Sprintf("%s:%s:z", e.dir, dockerLocalSharedDir))
+	args = append(args, "--mount", fmt.Sprintf("%s:%s:z", e.dir, e.dir))
 
 	for _, v := range opts.Volumes {
 		args = append(args, "--mount", v)
@@ -126,7 +126,7 @@ func (d *dockerSlimRunnable) Dir() string {
 }
 
 func (d *dockerSlimRunnable) InternalDir() string {
-	return filepath.Join(dockerLocalSharedDir, "data", d.Name())
+	return d.Dir()
 }
 
 func (d *dockerSlimRunnable) Init(opts StartOptions) Runnable {
@@ -308,13 +308,7 @@ func (d *dockerSlimRunnable) Exec(command Command, opts ...ExecOption) error {
 	args := []string{"exec", d.container.name}
 	args = append(args, command.Cmd)
 	args = append(args, command.Args...)
-	if o.Stdin != nil {
-		args = append(args[:1], append([]string{"-i"}, args[1:]...)...)
-	}
 	cmd := d.container.env.exec("docker", args...)
-	if o.Stdin != nil {
-		cmd.Stdin = o.Stdin
-	}
 	cmd.Stdout = o.Stdout
 	cmd.Stderr = o.Stderr
 	return cmd.Run()
