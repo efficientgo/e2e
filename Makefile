@@ -13,6 +13,8 @@ GIT ?= $(shell which git)
 # Support gsed on OSX (installed via brew), falling back to sed. On Linux
 # systems gsed won't be installed, so will use sed as expected.
 SED ?= $(shell which gsed 2>/dev/null || which sed)
+# Same as above, but for xargs.
+XARGS ?= $(shell which gxargs 2>/dev/null || which xargs)
 
 define require_clean_work_tree
 	@git update-index -q --ignore-submodules --refresh
@@ -119,7 +121,7 @@ lint: $(FAILLINT) $(GOLANGCI_LINT) $(MISSPELL) $(COPYRIGHT) build format docs ch
 		cd $${dir} && $(GOLANGCI_LINT) run; \
 	done
 	@echo ">> detecting misspells"
-	@find . -type f | grep -v vendor/ | grep -vE '\./\..*' | xargs $(MISSPELL) -error
+	@find . -type f | grep -v vendor/ | grep -vE '\./\..*' | $(XARGS) $(MISSPELL) -error
 	@echo ">> ensuring Copyright headers"
-	@$(COPYRIGHT) $(shell go list -f "{{.Dir}}" ./... | xargs -i find "{}" -name "*.go")
+	@$(COPYRIGHT) $(shell go list -f "{{.Dir}}" ./... | $(XARGS) -i find "{}" -name "*.go")
 	$(call require_clean_work_tree,"detected files without copyright - run make lint and commit changes.")
