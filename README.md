@@ -48,20 +48,21 @@ Let's go through an example leveraging the `go test` flow:
 
 4. Use `e2emon.AsInstrumented` if you want to be able to query your service for metrics, which is a great way to assess it's internal state in tests! For example see following Etcd definition:
 
-   ```go mdox-exec="sed -n '231,243p' db/db.go"
+   ```go mdox-exec="sed -n '228,243p' db/db.go"
    	return e2emon.AsInstrumented(env.Runnable(name).WithPorts(map[string]int{AccessPortName: 2379, "metrics": 9000}).Init(
-   		e2e.StartOptions{
-   			Image: o.image,
-   			Command: e2e.NewCommand(
-   				"/usr/local/bin/etcd",
-   				"--listen-client-urls=http://0.0.0.0:2379",
-   				"--advertise-client-urls=http://0.0.0.0:2379",
-   				"--listen-metrics-urls=http://0.0.0.0:9000",
-   				"--log-level=error",
-   			),
-   			Readiness: e2e.NewHTTPReadinessProbe("metrics", "/health", 200, 204),
-   		},
+        e2e.StartOptions{
+            Image: o.image,
+            Command: e2e.NewCommand(
+                "/usr/local/bin/etcd",
+                "--listen-client-urls=http://0.0.0.0:2379",
+                "--advertise-client-urls=http://0.0.0.0:2379",
+                "--listen-metrics-urls=http://0.0.0.0:9000",
+                "--log-level=error",
+            ),
+            Readiness: e2e.NewHTTPReadinessProbe("metrics", "/health", 200, 204),
+        },
    	), "metrics")
+   }
    ```
 
 5. Program your scenario as you want. You can start, wait for their readiness, stop, check their metrics and use their network endpoints from both unit test (`Endpoint`) as well as within each workload (`InternalEndpoint`). You can also access workload directory. There is a shared directory across all workloads. Check `Dir` and `InternalDir` runnable methods.
