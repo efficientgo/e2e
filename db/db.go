@@ -80,8 +80,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 	}
 
 	userID := strconv.Itoa(os.Getuid())
-	const consolePortName = "console"
-	ports := map[string]int{AccessPortName: 8090, consolePortName: 8080}
+	ports := map[string]int{AccessPortName: 8090}
 	envVars := []string{
 		"MINIO_ROOT_USER=" + MinioAccessKey,
 		"MINIO_ROOT_PASSWORD=" + MinioSecretKey,
