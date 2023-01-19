@@ -6,12 +6,20 @@
 package e2edb
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/efficientgo/e2e"
 	e2emon "github.com/efficientgo/e2e/monitoring"
 	e2eprof "github.com/efficientgo/e2e/profiling"
@@ -32,6 +40,7 @@ type options struct {
 
 type minioOptions struct {
 	enableSSE bool
+	enableTLS bool
 }
 
 func WithImage(image string) Option {
@@ -49,6 +58,12 @@ func WithFlagOverride(ov map[string]string) Option {
 func WithMinioSSE() Option {
 	return func(o *options) {
 		o.minioOptions.enableSSE = true
+	}
+}
+
+func WithMinioTLS() Option {
+	return func(o *options) {
+		o.minioOptions.enableTLS = true
 	}
 }
 
@@ -85,7 +100,6 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 		"MINIO_ROOT_USER=" + MinioAccessKey,
 		"MINIO_ROOT_PASSWORD=" + MinioSecretKey,
 		"MINIO_BROWSER=" + "off",
-		"ENABLE_HTTPS=" + "0",
 	}
 
 	f := env.Runnable(name).WithPorts(ports).Future()
@@ -105,6 +119,56 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 		command += "curl -sSL --tlsv1.3 -O 'https://raw.githubusercontent.com/minio/kes/master/root.key' -O 'https://raw.githubusercontent.com/minio/kes/master/root.cert' && cp root.* /home/me/ && "
 	}
 
+	var readiness e2e.ReadinessProbe
+
+	if o.minioOptions.enableTLS {
+		if err := os.MkdirAll(filepath.Join(f.Dir(), "certs", "CAs"), 0750); err != nil {
+			return &e2emon.InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "create certs dir"))}
+		}
+
+		if err := genCerts(
+			filepath.Join(f.Dir(), "certs", "public.crt"),
+			filepath.Join(f.Dir(), "certs", "private.key"),
+			filepath.Join(f.Dir(), "certs", "CAs", "ca.crt"),
+			fmt.Sprintf("%s-%s", env.Name(), name),
+		); err != nil {
+			return &e2emon.InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "fail to generate certs"))}
+		}
+
+		envVars = append(envVars, "ENABLE_HTTPS="+"1")
+		command = command + fmt.Sprintf(
+			"su - me -s /bin/sh -c 'mkdir -p %s && %s /opt/bin/minio server --certs-dir %s/certs --address :%v --quiet %v'",
+			filepath.Join(f.Dir(), bktName),
+			strings.Join(envVars, " "),
+			f.Dir(),
+			ports[AccessPortName],
+			f.Dir(),
+		)
+
+		readiness = e2e.NewHTTPSReadinessProbe(
+			AccessPortName,
+			"/minio/health/cluster",
+			200,
+			200,
+		)
+	} else {
+		envVars = append(envVars, "ENABLE_HTTPS="+"0")
+		command = command + fmt.Sprintf(
+			"su - me -s /bin/sh -c 'mkdir -p %s && %s /opt/bin/minio server --address :%v --quiet %v'",
+			filepath.Join(f.Dir(), bktName),
+			strings.Join(envVars, " "),
+			ports[AccessPortName],
+			f.Dir(),
+		)
+
+		readiness = e2e.NewHTTPReadinessProbe(
+			AccessPortName,
+			"/minio/health/cluster",
+			200,
+			200,
+		)
+	}
+
 	return e2emon.AsInstrumented(f.Init(
 		e2e.StartOptions{
 			Image: o.image,
@@ -112,22 +176,81 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 			Command: e2e.NewCommandWithoutEntrypoint(
 				"sh",
 				"-c",
-				command+fmt.Sprintf(
-					"su - me -s /bin/sh -c 'mkdir -p %s && %s /opt/bin/minio server --address :%v --quiet %v'",
-					filepath.Join(f.Dir(), bktName),
-					strings.Join(envVars, " "),
-					ports[AccessPortName],
-					f.Dir(),
-				),
+				command,
 			),
-			Readiness: e2e.NewHTTPReadinessProbe(
-				AccessPortName,
-				"/minio/health/cluster",
-				200,
-				200,
-			),
+			Readiness: readiness,
 		},
 	), AccessPortName)
+}
+
+// genCerts generates certificates and writes those to the provided paths.
+func genCerts(certPath, privkeyPath, caPath, serverName string) error {
+	var caRoot = &x509.Certificate{
+		SerialNumber:          big.NewInt(2019),
+		NotAfter:              time.Now().AddDate(10, 0, 0),
+		IsCA:                  true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
+
+	var cert = &x509.Certificate{
+		SerialNumber: big.NewInt(1658),
+		DNSNames:     []string{serverName},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
+		NotAfter:     time.Now().AddDate(10, 0, 0),
+		SubjectKeyId: []byte{1, 2, 3},
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+	}
+
+	caPrivKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+
+	certPrivKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+	// Generate CA cert.
+	caBytes, err := x509.CreateCertificate(rand.Reader, caRoot, caRoot, &caPrivKey.PublicKey, caPrivKey)
+	if err != nil {
+		return err
+	}
+	caPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: caBytes,
+	})
+	err = os.WriteFile(caPath, caPEM, 0644)
+	if err != nil {
+		return err
+	}
+
+	// Sign the cert with the CA private key.
+	certBytes, err := x509.CreateCertificate(rand.Reader, cert, caRoot, &certPrivKey.PublicKey, caPrivKey)
+	if err != nil {
+		return err
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certBytes,
+	})
+	err = os.WriteFile(certPath, certPEM, 0644)
+	if err != nil {
+		return err
+	}
+
+	certPrivKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
+	})
+	err = os.WriteFile(privkeyPath, certPrivKeyPEM, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func NewConsul(env e2e.Environment, name string, opts ...Option) *e2emon.InstrumentedRunnable {
