@@ -119,6 +119,8 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 		command += "curl -sSL --tlsv1.3 -O 'https://raw.githubusercontent.com/minio/kes/master/root.key' -O 'https://raw.githubusercontent.com/minio/kes/master/root.cert' && cp root.* /home/me/ && "
 	}
 
+	var readiness e2e.ReadinessProbe
+
 	if o.minioOptions.enableTLS {
 		if err := os.MkdirAll(filepath.Join(f.Dir(), "certs", "CAs"), 0750); err != nil {
 			return &e2emon.InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "create certs dir"))}
@@ -128,7 +130,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 			filepath.Join(f.Dir(), "certs", "public.crt"),
 			filepath.Join(f.Dir(), "certs", "private.key"),
 			filepath.Join(f.Dir(), "certs", "CAs", "ca.crt"),
-			fmt.Sprintf("%s-minio-%s", env.Name(), name),
+			fmt.Sprintf("%s-%s", env.Name(), name),
 		); err != nil {
 			return &e2emon.InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "fail to generate certs"))}
 		}
@@ -142,6 +144,13 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 			ports[AccessPortName],
 			f.Dir(),
 		)
+
+		readiness = e2e.NewHTTPSReadinessProbe(
+			AccessPortName,
+			"/minio/health/cluster",
+			200,
+			200,
+		)
 	} else {
 		envVars = append(envVars, "ENABLE_HTTPS="+"0")
 		command = command + fmt.Sprintf(
@@ -150,6 +159,13 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 			strings.Join(envVars, " "),
 			ports[AccessPortName],
 			f.Dir(),
+		)
+
+		readiness = e2e.NewHTTPReadinessProbe(
+			AccessPortName,
+			"/minio/health/cluster",
+			200,
+			200,
 		)
 	}
 
@@ -162,12 +178,7 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 				"-c",
 				command,
 			),
-			Readiness: e2e.NewHTTPReadinessProbe(
-				AccessPortName,
-				"/minio/health/cluster",
-				200,
-				200,
-			),
+			Readiness: readiness,
 		},
 	), AccessPortName)
 }
