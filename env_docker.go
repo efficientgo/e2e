@@ -523,7 +523,15 @@ func (d *dockerRunnable) Endpoint(portName string) string {
 	}
 
 	// Do not use "localhost", because it doesn't work with the AWS DynamoDB client.
-	return fmt.Sprintf("127.0.0.1:%d", localPort)
+	addr := "127.0.0.1"
+	// If we are running inside Docker then 127.0.0.1 is not accessible.
+	// To access the host's network, let's use host.docker.internal.
+	// See: https://docs.docker.com/desktop/networking/#i-want-to-connect-from-a-container-to-a-service-on-the-host.
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		addr = "host.docker.internal"
+	}
+
+	return fmt.Sprintf("%s:%d", addr, localPort)
 }
 
 // InternalEndpoint returns internal service endpoint (host:port) for given internal port.
