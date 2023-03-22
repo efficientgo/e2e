@@ -10,10 +10,10 @@ import (
 	"github.com/efficientgo/e2e"
 )
 
-func TestDockerEnvironment(t *testing.T) {
+func TestKindEnvironment(t *testing.T) {
 	t.Parallel()
 
-	e, err := e2e.New()
+	e, err := e2e.NewKindEnvironment()
 	testutil.Ok(t, err)
 	t.Cleanup(e.Close)
 	testEnvironment(t, e)
