@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -528,7 +529,10 @@ func (d *dockerRunnable) Endpoint(portName string) string {
 	// To access the host's network, let's use host.docker.internal.
 	// See: https://docs.docker.com/desktop/networking/#i-want-to-connect-from-a-container-to-a-service-on-the-host.
 	if _, err := os.Stat("/.dockerenv"); err == nil {
-		addr = "host.docker.internal"
+		dockerAddrs, err := net.LookupIP(dockerGatewayAddr)
+		if err == nil && len(dockerAddrs) > 0 {
+			addr = dockerGatewayAddr
+		}
 	}
 
 	return fmt.Sprintf("%s:%d", addr, localPort)
