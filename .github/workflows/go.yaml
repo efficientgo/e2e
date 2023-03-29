@@ -50,8 +50,15 @@ jobs:
       - name: Install docker - MacOS
         if: runner.os == 'macOS'
         run: |
-          brew install docker colima
-          colima start
+          brew install docker colima kind kubectl
+          # Ensure Lima guest is accessible from mac host.
+          colima start --network-address
+          # Find the IP address of the Lima guest.
+          IP=$(limactl shell colima -- ip a show dev col0 | head -n3 | tail -n1 | cut -d' ' -f6 | rev | cut -c4- | rev)
+          # Route packets destined for 172/8 through the Lima guest.
+          sudo route -nv add -net 172 $IP
+          # Configure the Lima guest to forward packets from the col0 bridge to Docker containers.
+          limactl shell colima -- sudo iptables -t filter -A FORWARD -s $IP/24 -d 172.0.0.0/8 -j ACCEPT
 
       - uses: actions/cache@v1
         with:
