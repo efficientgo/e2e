@@ -191,8 +191,17 @@ type runnable interface {
 type ExecOption func(o *ExecOptions)
 
 type ExecOptions struct {
+	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
+}
+
+// WithExecOptionStdin sets stdin reader to be used when exec is performed.
+// By default, it is nil.
+func WithExecOptionStdin(stdin io.Reader) ExecOption {
+	return func(o *ExecOptions) {
+		o.Stdin = stdin
+	}
 }
 
 // WithExecOptionStdout sets stdout writer to be used when exec is performed.
