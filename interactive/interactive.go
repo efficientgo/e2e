@@ -45,13 +45,18 @@ func OpenInBrowser(url string) error {
 // This function is useful when you want to interact with e2e tests and manually decide when to finish. Use this function
 // as opposed to RunUntilSignal for certain IDEs that does not send correct signal on stop (e.g. Goland pre 2022.3,
 // see https://youtrack.jetbrains.com/issue/GO-5982).
-func RunUntilEndpointHit() (err error) {
+func RunUntilEndpointHit() error {
+	return RunUntilEndpointHitWithPort(0)
+}
+
+// RunUntilEndpointHitWithPort is like RunUntilEndpointHit, but it allows specifying static port.
+func RunUntilEndpointHitWithPort(port int) (err error) {
 	once := sync.Once{}
 	wg := sync.WaitGroup{}
 	stopWG := sync.WaitGroup{}
 	stopWG.Add(1)
 
-	l, err := net.Listen("tcp", "localhost:0")
+	l, err := net.Listen("tcp", fmt.Sprintf("localhost:%v", port))
 	if err != nil {
 		return err
 	}
@@ -81,7 +86,7 @@ func RunUntilEndpointHit() (err error) {
 		wg.Done()
 	}()
 
-	fmt.Println("Waiting for user HTTP request on ", "http://"+l.Addr().String(), " or SIGINT, SIGKILL or SIGHUP signal...")
+	fmt.Println("Waiting for user HTTP request on", "http://"+l.Addr().String(), " or SIGINT, SIGKILL or SIGHUP signal...")
 	stopWG.Wait()
 
 	// Cleanup.

@@ -5,6 +5,8 @@ package e2einteractive
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"syscall"
 	"testing"
@@ -14,6 +16,30 @@ import (
 	"github.com/efficientgo/core/runutil"
 	"github.com/efficientgo/core/testutil"
 )
+
+func TestRunUntilEndpointHitWithPort(t *testing.T) {
+	const port = 12131
+
+	s := make(chan struct{})
+	go func() {
+		testutil.Ok(t, RunUntilEndpointHitWithPort(port))
+		s <- struct{}{}
+		close(s)
+	}()
+
+	r, err := http.Get(fmt.Sprintf("http://localhost:%v", port))
+	testutil.Ok(t, err)
+	testutil.Equals(t, 200, r.StatusCode)
+
+	testutil.Ok(t, runutil.Retry(200*time.Millisecond, context.Background().Done(), func() error {
+		select {
+		case <-s:
+			return nil
+		default:
+			return errors.New("execution is still stopped")
+		}
+	}))
+}
 
 func TestRunUntilEndpointHit_Signal(t *testing.T) {
 	s := make(chan struct{})
