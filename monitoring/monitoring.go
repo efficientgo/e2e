@@ -362,3 +362,27 @@ func newCadvisor(env e2e.Environment, name string, cgroupPrefixes ...string) *In
 		Privileged: true,
 	}), "http")
 }
+
+const nginxImage = "docker.io/nginx:1.21.1-alpine"
+
+// NewStaticMetricsServer creates a new nginx server that serves the content of metrics as /metrics endpoint.
+// This is useful for testing different metrics scrapers.
+func NewStaticMetricsServer(e e2e.Environment, name string, metrics []byte) *InstrumentedRunnable {
+	f := e.Runnable(name).WithPorts(map[string]int{"http": 80}).Future()
+	if err := os.MkdirAll(f.Dir(), 0750); err != nil {
+		return &InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "create static metrics dir"))}
+	}
+	metricsFilePath := filepath.Join(f.Dir(), "metrics.txt")
+	if err := os.WriteFile(metricsFilePath, metrics, 0644); err != nil {
+		return &InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "creating static metrics file"))}
+	}
+	probe := e2e.NewHTTPReadinessProbe("http", "/metrics", 200, 200)
+	return AsInstrumented(
+		f.Init(e2e.StartOptions{
+			Image:     nginxImage,
+			Volumes:   []string{metricsFilePath + ":/usr/share/nginx/html/metrics:ro"},
+			Readiness: probe,
+		}),
+		"http",
+	)
+}
