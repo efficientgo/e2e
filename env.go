@@ -28,6 +28,13 @@ type environmentOptions struct {
 	name    string
 
 	volumes []string
+	cpus    string
+}
+
+func WithCPUs(cpus string) EnvironmentOption {
+	return func(o *environmentOptions) {
+		o.cpus = cpus
+	}
 }
 
 // WithLogger tells environment to use custom logger to default one (stdout).

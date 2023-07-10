@@ -187,6 +187,23 @@ In the profiling UI choose a profile type, filter by instances (autocompleted) a
 
 For runnables that are both instrumented and profiled you can use [`e2eobs.AsObservable`](observable/observable.go).
 
+### Debugging flaky tests
+
+Sometimes tests might fail due to timing problems on highly CPU constrained systems such as GitHub actions. To facilitate fixing these issues, `e2e` supports limiting CPU time allocated to Docker containers through `E2E_DOCKER_CPUS` environment variable:
+
+```go mdox-exec="sed -n '285,288p' env_docker.go"
+	dockerCPUsEnv := os.Getenv(dockerCPUEnvName)
+	if dockerCPUsEnv != "" {
+		dockerCPUsParam = dockerCPUsEnv
+	}
+```
+
+You can set it either through command line parameters or `t.Setenv("E2E_DOCKER_CPUS", "...")`.
+
+Alternatively, you could pass `WithCPUs` through environment options so that some e2e test would have permanently reduced available CPU time.
+
+See what values you can pass to the `--cpus` flag on [Docker website](https://docs.docker.com/config/containers/resource_constraints/#configure-the-default-cfs-scheduler).
+
 ### Troubleshooting
 
 #### Can't create docker network
