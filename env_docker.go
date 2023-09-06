@@ -819,7 +819,8 @@ func (e *DockerEnvironment) close() {
 	}
 
 	if e.dir != "" {
-		if err := e.exec("chmod", "-R", "777", e.dir).Run(); err != nil {
+		if out, err := e.exec("chmod", "-R", "777", e.dir).CombinedOutput(); err != nil {
+			e.logger.Log(string(out))
 			e.logger.Log("Error while chmod sharedDir", e.dir, "err:", err)
 		}
 		if err := os.RemoveAll(e.dir); err != nil {
