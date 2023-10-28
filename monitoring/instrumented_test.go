@@ -19,6 +19,7 @@ import (
 type runnableFake struct {
 	e2e.Runnable
 
+	running   bool
 	endpoints map[string]string
 }
 
@@ -28,6 +29,22 @@ func (r *runnableFake) InternalEndpoint(portName string) string {
 
 func (r *runnableFake) Endpoint(portName string) string {
 	return r.endpoints[portName]
+}
+
+func (r *runnableFake) IsRunning() bool {
+	return r.running
+}
+
+func (r *runnableFake) SetMetadata(k, v any) {
+}
+
+func (r *runnableFake) Name() string {
+	return "fake"
+}
+
+func (r *runnableFake) Start() error {
+	r.running = true
+	return nil
 }
 
 func TestWaitSumMetric(t *testing.T) {
@@ -86,6 +103,7 @@ metric_b_summary_count 1
 			Max:        600 * time.Millisecond,
 			MaxRetries: 50,
 		})))
+	testutil.Ok(t, r.Start())
 
 	testutil.Ok(t, r.WaitSumMetrics(Equals(221), "metric_a"))
 
@@ -159,6 +177,7 @@ metric_b 1000
 			Max:        600 * time.Millisecond,
 			MaxRetries: 50,
 		})))
+	testutil.Ok(t, r.Start())
 
 	testutil.Ok(t, r.WaitSumMetrics(Equals(math.NaN()), "metric_a"))
 }
