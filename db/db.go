@@ -33,9 +33,16 @@ const (
 type Option func(*options)
 
 type options struct {
-	image        string
-	flagOverride map[string]string
-	minioOptions minioOptions
+	image          string
+	flagOverride   map[string]string
+	minioOptions   minioOptions
+	azuriteOptions azuriteOptions
+}
+
+type azuriteOptions struct {
+	enableTLS             bool
+	customStorageAccounts string
+	connectionString      string
 }
 
 type minioOptions struct {
@@ -64,6 +71,18 @@ func WithMinioSSE() Option {
 func WithMinioTLS() Option {
 	return func(o *options) {
 		o.minioOptions.enableTLS = true
+	}
+}
+
+func WithAzuriteStorageAccounts(acc string) Option {
+	return func(o *options) {
+		o.azuriteOptions.customStorageAccounts = acc
+	}
+}
+
+func WithAzuriteConnectionStringOverride(s string) Option {
+	return func(o *options) {
+		o.azuriteOptions.connectionString = s
 	}
 }
 
@@ -181,6 +200,98 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 			Readiness: readiness,
 		},
 	), AccessPortName)
+}
+
+// NewAzuriteBlobStorage returns azurite server, used as a local replacement for Azure Blob Storage.
+func NewAzuriteBlobStorage(env e2e.Environment, name string, opts ...Option) *e2emon.InstrumentedRunnable {
+	o := options{image: "mcr.microsoft.com/azure-storage/azurite:latest"}
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	ports := map[string]int{"blob": 10000}
+
+	f := env.Runnable(name).WithPorts(ports).Future()
+
+	envVars := []string{}
+	if o.azuriteOptions.customStorageAccounts != "" {
+		envVars = append(envVars, "AZURITE_ACCOUNTS="+o.azuriteOptions.customStorageAccounts)
+	}
+
+	command := fmt.Sprintf(
+		"'%s azurite-blob --blobHost 0.0.0.0 --blobPort %v -l %v",
+		strings.Join(envVars, " "),
+		ports["blob"],
+		f.Dir(),
+	)
+
+	if o.azuriteOptions.enableTLS {
+		if err := os.MkdirAll(filepath.Join(f.Dir(), "certs", "CAs"), 0750); err != nil {
+			return &e2emon.InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "create certs dir"))}
+		}
+
+		if err := genCerts(
+			filepath.Join(f.Dir(), "certs", "cert.pem"),
+			filepath.Join(f.Dir(), "certs", "key.pem"),
+			filepath.Join(f.Dir(), "certs", "CAs", "ca.crt"),
+			fmt.Sprintf("%s-%s", env.Name(), name),
+		); err != nil {
+			return &e2emon.InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "fail to generate certs"))}
+		}
+
+		// As per https://github.com/Azure/Azurite/tree/main#start-azurite-with-https-and-pem-1
+		command += fmt.Sprintf(
+			" --cert %s/certs/cert.pem --key %s/certs/key.pem --oauth basic",
+			f.Dir(),
+			f.Dir(),
+		)
+	}
+	command += "'"
+
+	return e2emon.AsInstrumented(f.Init(e2e.StartOptions{
+		Image: o.image,
+		Command: e2e.NewCommandWithoutEntrypoint(
+			"sh",
+			"-c",
+			command,
+		),
+	}), "blob")
+}
+
+// NewAzuriteBlobStorageWriter starts a container with azure CLI, to write data into azurite blob storage.
+// This is needed, since Azurite doesn't support copying over dirs, but encodes into https://github.com/techfort/LokiJS db.
+func NewAzuriteBlobStorageWriter(env e2e.Environment, name, containerName, tempDataDir string, opts ...Option) e2e.Runnable {
+	o := options{image: "mcr.microsoft.com/azure-cli:latest", azuriteOptions: azuriteOptions{
+		// As per https://github.com/Azure/Azurite/tree/main#default-storage-account
+		connectionString: "\"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://0.0.0.0:10000/devstoreaccount1;\"",
+	}}
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	f := env.Runnable(name).Future()
+
+	command := fmt.Sprintf(
+		"'az storage container create -n %s --connection-string=%s",
+		containerName,
+		o.azuriteOptions.connectionString,
+	)
+
+	command += fmt.Sprintf(
+		"&& az storage blob upload-batch -d %s -s /shared/ --connection-string=%s'",
+		containerName,
+		o.azuriteOptions.connectionString,
+	)
+
+	return f.Init(e2e.StartOptions{
+		Image: o.image,
+		Command: e2e.NewCommandWithoutEntrypoint(
+			"sh",
+			"-c",
+			command,
+		),
+		Volumes: []string{tempDataDir + ":/shared"},
+	})
 }
 
 // genCerts generates certificates and writes those to the provided paths.
