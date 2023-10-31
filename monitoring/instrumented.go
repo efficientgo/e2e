@@ -71,7 +71,7 @@ func WithInstrumentedScheme(scheme string) InstrumentedOption {
 	}
 }
 
-// WithInstrumentedWaitBackoff allows customizing wait backoff when accessing metric endpoint.
+// WithInstrumentedWaitBackoff allows customizing wait backoff when accessing or asserting on the metric endpoint.
 func WithInstrumentedWaitBackoff(waitBackoff *backoff.Backoff) InstrumentedOption {
 	return func(o *rOpt) {
 		o.waitBackoff = waitBackoff
@@ -144,6 +144,17 @@ func (r *InstrumentedRunnable) Metrics() (_ string, err error) {
 	return string(body), err
 }
 
+func (r *InstrumentedRunnable) buildMetricsOptions(opts []MetricsOption) metricsOptions {
+	result := metricsOptions{
+		getValue:    getMetricValue,
+		waitBackoff: r.waitBackoff,
+	}
+	for _, opt := range opts {
+		opt(&result)
+	}
+	return result
+}
+
 // WaitSumMetrics waits for at least one instance of each given metric names to be present and their sums,
 // returning true when passed to given expected(...).
 func (r *InstrumentedRunnable) WaitSumMetrics(expected MetricValueExpectation, metricNames ...string) error {
@@ -154,14 +165,13 @@ func (r *InstrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExp
 	var (
 		sums    []float64
 		err     error
-		options = buildMetricsOptions(opts)
+		options = r.buildMetricsOptions(opts)
 	)
 
-	metricsWaitBackoff := backoff.New(context.Background(), *options.waitBackoff)
-	for metricsWaitBackoff.Reset(); metricsWaitBackoff.Ongoing(); {
+	for options.waitBackoff.Reset(); options.waitBackoff.Ongoing(); {
 		sums, err = r.SumMetrics(metricNames, opts...)
 		if options.waitMissingMetrics && errors.Is(err, errMissingMetric) {
-			metricsWaitBackoff.Wait()
+			options.waitBackoff.Wait()
 			continue
 		}
 		if err != nil {
@@ -171,15 +181,14 @@ func (r *InstrumentedRunnable) WaitSumMetricsWithOptions(expected MetricValueExp
 		if expected(sums...) {
 			return nil
 		}
-
-		metricsWaitBackoff.Wait()
+		options.waitBackoff.Wait()
 	}
-	return errors.Newf("unable to find metrics %s with expected values after %d retries. Last error: %v. Last values: %v", metricNames, metricsWaitBackoff.NumRetries(), err, sums)
+	return errors.Newf("unable to find metrics %s with expected values after %d retries. Last error: %v. Last values: %v", metricNames, options.waitBackoff.NumRetries(), err, sums)
 }
 
 // SumMetrics returns the sum of the values of each given metric names.
 func (r *InstrumentedRunnable) SumMetrics(metricNames []string, opts ...MetricsOption) ([]float64, error) {
-	options := buildMetricsOptions(opts)
+	options := r.buildMetricsOptions(opts)
 	sums := make([]float64, len(metricNames))
 
 	metrics, err := r.Metrics()
@@ -224,9 +233,9 @@ func (r *InstrumentedRunnable) SumMetrics(metricNames []string, opts ...MetricsO
 
 // WaitRemovedMetric waits until a metric disappear from the list of metrics exported by the service.
 func (r *InstrumentedRunnable) WaitRemovedMetric(metricName string, opts ...MetricsOption) error {
-	options := buildMetricsOptions(opts)
+	options := r.buildMetricsOptions(opts)
 
-	for r.waitBackoff.Reset(); r.waitBackoff.Ongoing(); {
+	for options.waitBackoff.Reset(); options.waitBackoff.Ongoing(); {
 		// Fetch metrics.
 		metrics, err := r.Metrics()
 		if err != nil {
@@ -251,7 +260,7 @@ func (r *InstrumentedRunnable) WaitRemovedMetric(metricName string, opts ...Metr
 			return nil
 		}
 
-		r.waitBackoff.Wait()
+		options.waitBackoff.Wait()
 	}
 
 	return errors.Newf("the metric %s is still exported by %s", metricName, r.Name())

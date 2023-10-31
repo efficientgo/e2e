@@ -4,8 +4,8 @@
 package e2emon
 
 import (
+	"context"
 	"math"
-	"time"
 
 	"github.com/efficientgo/core/backoff"
 	"github.com/efficientgo/e2e/monitoring/matchers"
@@ -24,13 +24,13 @@ type metricsOptions struct {
 	labelMatchers      []*matchers.Matcher
 	waitMissingMetrics bool
 	skipMissingMetrics bool
-	waitBackoff        *backoff.Config
+	waitBackoff        *backoff.Backoff
 }
 
 // WithWaitBackoff is an option to configure a backoff when waiting on a metric value.
 func WithWaitBackoff(backoffConfig *backoff.Config) MetricsOption {
 	return func(o *metricsOptions) {
-		o.waitBackoff = backoffConfig
+		o.waitBackoff = backoff.New(context.Background(), *backoffConfig)
 	}
 }
 
@@ -61,21 +61,6 @@ func SkipMissingMetrics() MetricsOption {
 	return func(o *metricsOptions) {
 		o.skipMissingMetrics = true
 	}
-}
-
-func buildMetricsOptions(opts []MetricsOption) metricsOptions {
-	result := metricsOptions{
-		getValue: getMetricValue,
-		waitBackoff: &backoff.Config{
-			Min:        300 * time.Millisecond,
-			Max:        600 * time.Millisecond,
-			MaxRetries: 50,
-		},
-	}
-	for _, opt := range opts {
-		opt(&result)
-	}
-	return result
 }
 
 func getMetricValue(m *io_prometheus_client.Metric) float64 {

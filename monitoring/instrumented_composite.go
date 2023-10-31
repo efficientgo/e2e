@@ -41,6 +41,17 @@ func (r *CompositeInstrumentedRunnable) MetricTargets() (ret []Target) {
 	return ret
 }
 
+func (r *CompositeInstrumentedRunnable) buildMetricsOptions(opts []MetricsOption) metricsOptions {
+	result := metricsOptions{
+		getValue:    getMetricValue,
+		waitBackoff: r.backoff,
+	}
+	for _, opt := range opts {
+		opt(&result)
+	}
+	return result
+}
+
 // WaitSumMetrics waits for at least one instance of each given metric names to be present and their sums, returning true
 // when passed to given expected(...).
 func (r *CompositeInstrumentedRunnable) WaitSumMetrics(expected MetricValueExpectation, metricNames ...string) error {
@@ -51,13 +62,13 @@ func (r *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected Metri
 	var (
 		sums    []float64
 		err     error
-		options = buildMetricsOptions(opts)
+		options = r.buildMetricsOptions(opts)
 	)
 
-	for r.backoff.Reset(); r.backoff.Ongoing(); {
+	for options.waitBackoff.Reset(); options.waitBackoff.Ongoing(); {
 		sums, err = r.SumMetrics(metricNames, opts...)
 		if options.waitMissingMetrics && errors.Is(err, errMissingMetric) {
-			r.backoff.Wait()
+			options.waitBackoff.Wait()
 			continue
 		}
 		if err != nil {
@@ -68,7 +79,7 @@ func (r *CompositeInstrumentedRunnable) WaitSumMetricsWithOptions(expected Metri
 			return nil
 		}
 
-		r.backoff.Wait()
+		options.waitBackoff.Wait()
 	}
 
 	return errors.Wrapf(err, "unable to find metrics %s with expected values. Last values: %v", metricNames, sums)
