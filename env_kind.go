@@ -451,7 +451,8 @@ func (e *KindEnvironment) close() {
 	}
 
 	if e.dir != "" {
-		if err := e.exec("chmod", "-R", "777", e.dir).Run(); err != nil {
+		if out, err := e.exec("chmod", "-R", "777", e.dir).CombinedOutput(); err != nil {
+			e.logger.Log(string(out))
 			e.logger.Log("Error while chmod sharedDir", e.dir, "err:", err)
 		}
 		if err := os.RemoveAll(e.dir); err != nil {
@@ -777,11 +778,6 @@ func (r *kindRunnable) prePullImage(ctx context.Context) (err error) {
 	cmd.Stderr = l
 	if err = cmd.Run(); err != nil {
 		return errors.Wrapf(err, "docker image %q failed to download", r.opts.Image)
-	}
-
-	if err := r.env.execContext(ctx, "docker", "image", "inspect", r.opts.Image).Run(); err == nil {
-		return errors.Wrapf(err, "load image %q into cluster", r.opts.Image)
-
 	}
 
 	return nil
