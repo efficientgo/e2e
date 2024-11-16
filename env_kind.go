@@ -55,7 +55,6 @@ func validateKindName(name string) error {
 	}
 	if !kindNamePattern.MatchString(name) {
 		return errors.Newf("name can have only %v characters due to kind cluster name constraints, got: %v", kindNamePattern.String(), name)
-
 	}
 	return nil
 }
@@ -768,7 +767,7 @@ func (r *kindRunnable) prePullImage(ctx context.Context) (err error) {
 	}
 
 	if _, err = r.env.execContext(ctx, "docker", "image", "inspect", r.opts.Image).CombinedOutput(); err == nil {
-		return nil
+		return r.loadImageIntoKindCluster(ctx)
 	}
 
 	// Assuming Error: No such image: <image>.
@@ -780,7 +779,15 @@ func (r *kindRunnable) prePullImage(ctx context.Context) (err error) {
 		return errors.Wrapf(err, "docker image %q failed to download", r.opts.Image)
 	}
 
-	return nil
+	return r.loadImageIntoKindCluster(ctx)
+}
+
+func (r *kindRunnable) loadImageIntoKindCluster(ctx context.Context) error {
+	cmd := r.env.execContext(ctx, "kind", "load", "docker-image", "--name", r.env.clusterName, r.opts.Image)
+	l := &LinePrefixLogger{prefix: r.Name() + ": ", logger: r.logger}
+	cmd.Stdout = l
+	cmd.Stderr = l
+	return cmd.Run()
 }
 
 func (r *kindRunnable) WaitReady() (err error) {
