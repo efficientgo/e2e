@@ -766,9 +766,7 @@ func (r *kindRunnable) prePullImage(ctx context.Context) (err error) {
 		return errors.Newf("service %q is running; expected stopped", r.Name())
 	}
 
-	if image, err := r.env.execContext(ctx, "docker", "image", "ls", r.opts.Image, "--format", "{{.Repository}}:{{.Tag}}").CombinedOutput(); err != nil {
-		return fmt.Errorf("error listing docker images: %w", err)
-	} else if strings.TrimSpace(string(image)) != r.opts.Image {
+	if _, err = r.env.execContext(ctx, "docker", "image", "inspect", r.opts.Image).CombinedOutput(); err != nil {
 		cmd := r.env.execContext(ctx, "docker", "pull", r.opts.Image)
 		l := &LinePrefixLogger{prefix: r.Name() + ": ", logger: r.logger}
 		cmd.Stdout = l
