@@ -44,7 +44,9 @@ type DockerEnvironment struct {
 
 	hostAddr      string
 	dockerVolumes []string
-	cpus          string
+
+	dnsServer string
+	cpus      string
 
 	registered map[string]struct{}
 	listeners  []EnvironmentListener
@@ -115,6 +117,7 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 		registered:    map[string]struct{}{},
 		dockerVolumes: e.volumes,
 		cpus:          e.cpus,
+		dnsServer:     e.dnsServer,
 	}
 
 	// Force a shutdown in order to cleanup from a spurious situation in case
@@ -316,6 +319,10 @@ func (e *DockerEnvironment) buildDockerRunArgs(name string, ports map[string]int
 
 	if opts.Privileged {
 		args = append(args, "--privileged")
+	}
+
+	if e.dnsServer != "" {
+		args = append(args, "--dns", e.dnsServer)
 	}
 
 	for _, c := range opts.Capabilities {

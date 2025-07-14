@@ -27,8 +27,16 @@ type environmentOptions struct {
 	verbose bool
 	name    string
 
-	volumes []string
-	cpus    string
+	volumes   []string
+	cpus      string
+	dnsServer string
+}
+
+// WithDNS sets DNS server to be used by the environment.
+func WithDNS(dnsServer string) EnvironmentOption {
+	return func(o *environmentOptions) {
+		o.dnsServer = dnsServer
+	}
 }
 
 func WithCPUs(cpus string) EnvironmentOption {
