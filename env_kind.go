@@ -55,7 +55,6 @@ func validateKindName(name string) error {
 	}
 	if !kindNamePattern.MatchString(name) {
 		return errors.Newf("name can have only %v characters due to kind cluster name constraints, got: %v", kindNamePattern.String(), name)
-
 	}
 	return nil
 }
@@ -767,20 +766,25 @@ func (r *kindRunnable) prePullImage(ctx context.Context) (err error) {
 		return errors.Newf("service %q is running; expected stopped", r.Name())
 	}
 
-	if _, err = r.env.execContext(ctx, "docker", "image", "inspect", r.opts.Image).CombinedOutput(); err == nil {
-		return nil
+	if _, err = r.env.execContext(ctx, "docker", "image", "inspect", r.opts.Image).CombinedOutput(); err != nil {
+		cmd := r.env.execContext(ctx, "docker", "pull", r.opts.Image)
+		l := &LinePrefixLogger{prefix: r.Name() + ": ", logger: r.logger}
+		cmd.Stdout = l
+		cmd.Stderr = l
+		if err = cmd.Run(); err != nil {
+			return errors.Wrapf(err, "docker image %q failed to download", r.opts.Image)
+		}
 	}
 
-	// Assuming Error: No such image: <image>.
-	cmd := r.env.execContext(ctx, "docker", "pull", r.opts.Image)
+	return r.loadImageIntoKindCluster(ctx)
+}
+
+func (r *kindRunnable) loadImageIntoKindCluster(ctx context.Context) error {
+	cmd := r.env.execContext(ctx, "kind", "load", "docker-image", "--name", r.env.clusterName, r.opts.Image)
 	l := &LinePrefixLogger{prefix: r.Name() + ": ", logger: r.logger}
 	cmd.Stdout = l
 	cmd.Stderr = l
-	if err = cmd.Run(); err != nil {
-		return errors.Wrapf(err, "docker image %q failed to download", r.opts.Image)
-	}
-
-	return nil
+	return cmd.Run()
 }
 
 func (r *kindRunnable) WaitReady() (err error) {
