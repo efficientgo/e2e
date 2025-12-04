@@ -13,10 +13,10 @@ jobs:
     name: Linters (Static Analysis) for Go
     steps:
       - name: Checkout code into the Go module directory.
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v6
         with:
           go-version: 1.18.x
 
@@ -40,10 +40,10 @@ jobs:
     name: Unit tests on Go ${{ matrix.go }} ${{ matrix.platform }}
     steps:
       - name: Checkout code into the Go module directory.
-        uses: actions/checkout@v2
+        uses: actions/checkout@v6
 
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
 
@@ -51,8 +51,9 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install docker colima kind kubectl
+          # Use QEMU instead of Virtualization.framework (vz) to avoid permission issues on GitHub Actions.
           # Ensure Lima guest is accessible from mac host.
-          colima start --network-address
+          colima start --vm-type qemu --network-address
           # Find the IP address of the Lima guest.
           IP=$(limactl shell colima -- ip a show dev col0 | head -n3 | tail -n1 | cut -d' ' -f6 | rev | cut -c4- | rev)
           # Route packets destined for 172/8 through the Lima guest.
