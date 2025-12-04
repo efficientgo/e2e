@@ -35,7 +35,8 @@ jobs:
       fail-fast: false
       matrix:
         go: ["1.18.x", "1.19.x"]
-        platform: [ubuntu-latest, macos-latest]
+        # pinning to macos-13 to avoid issues with the default macos-latest runner.
+        platform: [ubuntu-latest, macos-13]
 
     name: Unit tests on Go ${{ matrix.go }} ${{ matrix.platform }}
     steps:
@@ -51,9 +52,8 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install docker colima kind kubectl
-          # Use QEMU instead of Virtualization.framework (vz) to avoid permission issues on GitHub Actions.
           # Ensure Lima guest is accessible from mac host.
-          colima start --vm-type qemu --network-address
+          colima start --network-address
           # Find the IP address of the Lima guest.
           IP=$(limactl shell colima -- ip a show dev col0 | head -n3 | tail -n1 | cut -d' ' -f6 | rev | cut -c4- | rev)
           # Route packets destined for 172/8 through the Lima guest.
