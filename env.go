@@ -371,9 +371,10 @@ func NewTCPReadinessProbe(portName string) *TCPReadinessProbe {
 
 func (p *TCPReadinessProbe) Ready(runnable Runnable) (err error) {
 	endpoint := runnable.Endpoint(p.portName)
-	if endpoint == "" {
+	switch endpoint {
+	case "":
 		return errors.Newf("cannot get service endpoint for port %s", p.portName)
-	} else if endpoint == "stopped" {
+	case "stopped":
 		return errors.New("service has stopped")
 	}
 

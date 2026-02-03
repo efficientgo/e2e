@@ -129,7 +129,7 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 
 	// Setup the docker network.
 	if out, err := d.exec("docker", "network", "create", "-d", "bridge", d.networkName).CombinedOutput(); err != nil {
-		e.logger.Log(string(out))
+		_ = e.logger.Log(string(out))
 		d.Close()
 		return nil, errors.Wrapf(err, "create docker network '%s'", d.networkName)
 	}
@@ -140,7 +140,7 @@ func New(opts ...EnvironmentOption) (_ *DockerEnvironment, err error) {
 	default: // the "linux" behavior is default
 		out, err := d.exec("docker", "network", "inspect", d.networkName).CombinedOutput()
 		if err != nil {
-			e.logger.Log(string(out))
+			_ = e.logger.Log(string(out))
 			d.Close()
 			return nil, errors.Wrapf(err, "inspect docker network '%s'", d.networkName)
 		}
@@ -427,7 +427,7 @@ func (d *dockerRunnable) Start() (err error) {
 		return errors.Newf("%v is running. Stop or kill it first to restart.", d.Name())
 	}
 
-	d.logger.Log("Starting", d.Name())
+	_ = d.logger.Log("Starting", d.Name())
 
 	// In case of any error, if the container was already created, we
 	// have to cleanup removing it. We ignore the error of the "docker rm"
@@ -479,7 +479,7 @@ func (d *dockerRunnable) Start() (err error) {
 		}
 	}
 
-	d.logger.Log("Ports for container", d.containerName(), ">> Local ports:", d.ports, "Ports available from host:", d.hostPorts)
+	_ = d.logger.Log("Ports for container", d.containerName(), ">> Local ports:", d.ports, "Ports available from host:", d.hostPorts)
 	return nil
 }
 
@@ -497,7 +497,7 @@ func (d *dockerRunnable) Stop() error {
 		return nil
 	}
 
-	d.logger.Log("Stopping", d.Name())
+	_ = d.logger.Log("Stopping", d.Name())
 	if out, err := d.env.exec("docker", "stop", "--time=30", d.containerName()).CombinedOutput(); err != nil {
 		d.logger.Log(string(out))
 		return err
@@ -710,7 +710,7 @@ func (d *dockerRunnable) Exec(command Command, opts ...ExecOption) error {
 func (e *DockerEnvironment) existDockerNetwork() (bool, error) {
 	out, err := e.exec("docker", "network", "ls", "--quiet", "--filter", fmt.Sprintf("name=%s", e.networkName)).CombinedOutput()
 	if err != nil {
-		e.logger.Log(string(out))
+		_ = e.logger.Log(string(out))
 		e.logger.Log("Unable to check if docker network", e.networkName, "exists:", err.Error())
 		return false, err
 	}

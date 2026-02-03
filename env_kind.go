@@ -549,18 +549,18 @@ func (r *kindRunnable) Start() (err error) {
 		return errors.Newf("%q is running; stop or kill it first to restart", r.Name())
 	}
 
-	r.logger.Log("Starting", r.Name())
+	_ = r.logger.Log("Starting", r.Name())
 
 	// In case of any error, if the container was already created, we
 	// have to cleanup removing it.
 	defer func() {
 		if err != nil {
 			if out, err := r.env.exec("kubernetes", "delete", "deployment", r.Name(), "--ignore-not-found", "--grace-period", "0", "--force").CombinedOutput(); err != nil {
-				r.logger.Log(string(out))
+				_ = r.logger.Log(string(out))
 				return
 			}
 			if out, err := r.env.exec("kubernetes", "delete", "service", r.Name(), "--ignore-not-found", "--grace-period", "0", "--force").CombinedOutput(); err != nil {
-				r.logger.Log(string(out))
+				_ = r.logger.Log(string(out))
 				return
 			}
 		}
