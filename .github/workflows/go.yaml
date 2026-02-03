@@ -51,8 +51,10 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install docker colima kind kubectl
-          # Ensure Lima guest is accessible from mac host.
-          colima start --network-address
+          # Use QEMU driver instead of VZ for better compatibility with nested virtualization
+          # on GitHub Actions runners. VZ driver requires hardware virtualization support
+          # that may not be available in virtualized CI environments.
+          colima start --vm-type=qemu --network-address
           # Find the IP address of the Lima guest.
           IP=$(limactl shell colima -- ip a show dev col0 | head -n3 | tail -n1 | cut -d' ' -f6 | rev | cut -c4- | rev)
           # Route packets destined for 172/8 through the Lima guest.
