@@ -16,6 +16,7 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/efficientgo/e2e"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 )
 
 var errMissingMetric = errors.New("metric not found")
@@ -195,8 +196,7 @@ func (r *InstrumentedRunnable) SumMetrics(metricNames []string, opts ...MetricsO
 	if err != nil {
 		return nil, err
 	}
-
-	var tp expfmt.TextParser
+	tp := expfmt.NewTextParser(model.UTF8Validation)
 	families, err := tp.TextToMetricFamilies(strings.NewReader(metrics))
 	if err != nil {
 		return nil, err
@@ -243,7 +243,7 @@ func (r *InstrumentedRunnable) WaitRemovedMetric(metricName string, opts ...Metr
 		}
 
 		// Parse metrics.
-		var tp expfmt.TextParser
+		tp := expfmt.NewTextParser(model.UTF8Validation)
 		families, err := tp.TextToMetricFamilies(strings.NewReader(metrics))
 		if err != nil {
 			return err
