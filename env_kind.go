@@ -620,7 +620,7 @@ func (r *kindRunnable) Start() (err error) {
 			r.hostPorts[port.Name] = port.NodePort
 		}
 
-		r.logger.Log("Ports for container", r.Name(), ">> Local ports:", r.ports, "Ports available from host:", r.hostPorts)
+		_ = r.logger.Log("Ports for container", r.Name(), ">> Local ports:", r.ports, "Ports available from host:", r.hostPorts)
 	}
 
 	return nil
@@ -631,9 +631,9 @@ func (r *kindRunnable) Stop() error {
 		return nil
 	}
 
-	r.logger.Log("Stopping", r.Name())
+	_ = r.logger.Log("Stopping", r.Name())
 	if out, err := r.env.exec("kubernetes", "delete", "deployment", r.Name(), "--ignore-not-found", "--grace-period", "30").CombinedOutput(); err != nil {
-		r.logger.Log(string(out))
+		_ = r.logger.Log(string(out))
 		return err
 	}
 	if out, err := r.env.exec("kubernetes", "delete", "service", r.Name(), "--ignore-not-found", "--grace-period", "30").CombinedOutput(); err != nil {

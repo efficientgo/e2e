@@ -50,7 +50,9 @@ jobs:
       - name: Install docker - MacOS
         if: runner.os == 'macOS'
         run: |
-          brew install qemu docker colima kind kubectl
+          brew install qemu docker kind kubectl
+          brew install --formula https://raw.githubusercontent.com/Homebrew/homebrew-core/e9db35b15df734780aeb60d756dd2cc19e35549b/Formula/l/lima.rb
+          brew install colima
           # Use QEMU driver instead of VZ for better compatibility with nested virtualization
           # on GitHub Actions runners. VZ driver requires hardware virtualization support
           # that may not be available in virtualized CI environments.

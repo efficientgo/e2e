@@ -499,7 +499,7 @@ func (d *dockerRunnable) Stop() error {
 
 	_ = d.logger.Log("Stopping", d.Name())
 	if out, err := d.env.exec("docker", "stop", "--time=30", d.containerName()).CombinedOutput(); err != nil {
-		d.logger.Log(string(out))
+		_ = d.logger.Log(string(out))
 		return err
 	}
 	d.usedNetworkName = ""
@@ -511,10 +511,10 @@ func (d *dockerRunnable) Kill() error {
 		return nil
 	}
 
-	d.logger.Log("Killing", d.Name())
+	_ = d.logger.Log("Killing", d.Name())
 
 	if out, err := d.env.exec("docker", "kill", d.containerName()).CombinedOutput(); err != nil {
-		d.logger.Log(string(out))
+		_ = d.logger.Log(string(out))
 		return err
 	}
 
@@ -711,7 +711,7 @@ func (e *DockerEnvironment) existDockerNetwork() (bool, error) {
 	out, err := e.exec("docker", "network", "ls", "--quiet", "--filter", fmt.Sprintf("name=%s", e.networkName)).CombinedOutput()
 	if err != nil {
 		_ = e.logger.Log(string(out))
-		e.logger.Log("Unable to check if docker network", e.networkName, "exists:", err.Error())
+		_ = e.logger.Log("Unable to check if docker network", e.networkName, "exists:", err.Error())
 		return false, err
 	}
 
@@ -765,7 +765,7 @@ func (e *DockerEnvironment) exec(cmd string, args ...string) *exec.Cmd {
 func (e *DockerEnvironment) execContext(ctx context.Context, cmd string, args ...string) *exec.Cmd {
 	c := NewCommand(cmd, args...)
 	if e.verbose {
-		e.logger.Log("dockerEnv:", c.toString())
+		_ = e.logger.Log("dockerEnv:", c.toString())
 	}
 	return c.exec(ctx)
 }
@@ -779,7 +779,7 @@ func (e *DockerEnvironment) close() {
 	for i := len(e.started) - 1; i >= 0; i-- {
 		n := e.started[i].Name()
 		if err := e.started[i].Kill(); err != nil {
-			e.logger.Log("Unable to kill service", n, ":", err.Error())
+			_ = e.logger.Log("Unable to kill service", n, ":", err.Error())
 		}
 	}
 
