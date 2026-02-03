@@ -638,7 +638,7 @@ func (d *dockerRunnable) waitForRunning() (err error) {
 	}
 
 	if len(out) > 0 {
-		d.logger.Log(string(out))
+		_ = d.logger.Log(string(out))
 	}
 	return errors.Wrapf(err, "docker container %s failed to start", d.Name())
 }
@@ -799,13 +799,13 @@ func (e *DockerEnvironment) close() {
 			}
 
 			if out, err = e.exec("docker", "rm", "--force", containerID).CombinedOutput(); err != nil {
-				e.logger.Log(string(out))
-				e.logger.Log("Unable to cleanup leftover container", containerID, ":", err.Error())
+				_ = e.logger.Log(string(out))
+				_ = e.logger.Log("Unable to cleanup leftover container", containerID, ":", err.Error())
 			}
 		}
 	} else {
-		e.logger.Log(string(out))
-		e.logger.Log("Unable to cleanup leftover containers:", err.Error())
+		_ = e.logger.Log(string(out))
+		_ = e.logger.Log("Unable to cleanup leftover containers:", err.Error())
 	}
 
 	// Teardown the docker network. In case the network does not exists (ie. this function
@@ -813,18 +813,18 @@ func (e *DockerEnvironment) close() {
 	// an error which may be misleading.
 	if ok, err := e.existDockerNetwork(); ok || err != nil {
 		if out, err := e.exec("docker", "network", "rm", e.networkName).CombinedOutput(); err != nil {
-			e.logger.Log(string(out))
-			e.logger.Log("Unable to remove docker network", e.networkName, ":", err.Error())
+			_ = e.logger.Log(string(out))
+			_ = e.logger.Log("Unable to remove docker network", e.networkName, ":", err.Error())
 		}
 	}
 
 	if e.dir != "" {
 		if out, err := e.exec("chmod", "-R", "777", e.dir).CombinedOutput(); err != nil {
-			e.logger.Log(string(out))
-			e.logger.Log("Error while chmod sharedDir", e.dir, "err:", err)
+			_ = e.logger.Log(string(out))
+			_ = e.logger.Log("Error while chmod sharedDir", e.dir, "err:", err)
 		}
 		if err := os.RemoveAll(e.dir); err != nil {
-			e.logger.Log("Error while removing sharedDir", e.dir, "err:", err)
+			_ = e.logger.Log("Error while removing sharedDir", e.dir, "err:", err)
 		}
 	}
 }
