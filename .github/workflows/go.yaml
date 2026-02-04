@@ -51,7 +51,12 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install docker kind kubectl colima
-          colima start --vm-type=vz --network-address
+          colima start --vm-type=vz --network-address || {
+            echo "=== Colima failed to start, dumping logs ==="
+            cat /Users/runner/.colima/_lima/colima/ha.stderr.log || echo "No stderr log found"
+            cat /Users/runner/.colima/_lima/colima/serial*.log || echo "No serial log found"
+            exit 1
+          }
           # Find the IP address of the Lima guest.
           IP=$(limactl shell colima -- ip a show dev col0 | head -n3 | tail -n1 | cut -d' ' -f6 | rev | cut -c4- | rev)
           # Route packets destined for 172/8 through the Lima guest.
