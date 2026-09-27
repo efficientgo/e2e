@@ -6,13 +6,16 @@
 package e2edb
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,11 +26,13 @@ import (
 	"github.com/efficientgo/e2e"
 	e2emon "github.com/efficientgo/e2e/monitoring"
 	e2eprof "github.com/efficientgo/e2e/profiling"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 const (
-	MinioAccessKey = "Cheescake"
-	MinioSecretKey = "supersecret"
+	S3AccessKey = "Cheescake"
+	S3SecretKey = "supersecret"
 )
 
 type Option func(*options)
@@ -36,6 +41,7 @@ type options struct {
 	image          string
 	flagOverride   map[string]string
 	minioOptions   minioOptions
+	seaweedOptions seaweedFSOptions
 	azuriteOptions azuriteOptions
 }
 
@@ -48,6 +54,11 @@ type azuriteOptions struct {
 type minioOptions struct {
 	enableSSE bool
 	enableTLS bool
+}
+
+type seaweedFSOptions struct {
+	enableTLS     bool
+	enableIceberg bool
 }
 
 func WithImage(image string) Option {
@@ -71,6 +82,18 @@ func WithMinioSSE() Option {
 func WithMinioTLS() Option {
 	return func(o *options) {
 		o.minioOptions.enableTLS = true
+	}
+}
+
+func WithSeaweedFSTLS() Option {
+	return func(o *options) {
+		o.seaweedOptions.enableTLS = true
+	}
+}
+
+func WithSeaweedFSIceberg() Option {
+	return func(o *options) {
+		o.seaweedOptions.enableIceberg = true
 	}
 }
 
@@ -116,8 +139,8 @@ func NewMinio(env e2e.Environment, name, bktName string, opts ...Option) *e2emon
 	userID := strconv.Itoa(os.Getuid())
 	ports := map[string]int{AccessPortName: 8090}
 	envVars := []string{
-		"MINIO_ROOT_USER=" + MinioAccessKey,
-		"MINIO_ROOT_PASSWORD=" + MinioSecretKey,
+		"MINIO_ROOT_USER=" + S3AccessKey,
+		"MINIO_ROOT_PASSWORD=" + S3SecretKey,
 		"MINIO_BROWSER=" + "off",
 	}
 
@@ -472,4 +495,136 @@ func NewETCD(env e2e.Environment, name string, opts ...Option) *e2emon.Instrumen
 			Readiness: e2e.NewHTTPReadinessProbe("metrics", "/health", 200, 204),
 		},
 	), "metrics")
+}
+
+func NewSeaweedFS(env e2e.Environment, name, bucket string, opts ...Option) *e2emon.InstrumentedRunnable {
+	o := options{image: "chrislusf/seaweedfs:4.47"}
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	const (
+		adminPortName        = "admin"
+		icebergPortName      = "iceberg"
+		seaweedFSIcebergPort = 8181
+	)
+	ports := map[string]int{
+		AccessPortName: 8333,
+		adminPortName:  23646,
+	}
+	icebergPort := 0
+	if o.seaweedOptions.enableIceberg {
+		icebergPort = seaweedFSIcebergPort
+		ports[icebergPortName] = seaweedFSIcebergPort
+	}
+	f := env.Runnable(name).WithPorts(ports).Future()
+	dataDir := filepath.Join(f.Dir(), "data")
+	if err := os.MkdirAll(dataDir, 0750); err != nil {
+		return &e2emon.InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "create SeaweedFS data directory"))}
+	}
+
+	args := []string{
+		"mini",
+		"-dir=/data",
+		fmt.Sprintf("-s3.port=%d", ports[AccessPortName]),
+		"-master.telemetry=false",
+		"-webdav=false",
+		fmt.Sprintf("-s3.port.iceberg=%d", icebergPort),
+		"-s3.port.lance=0",
+		"-s3.autoCreateBucket=false",
+	}
+	readiness := e2e.ReadinessProbe(e2e.NewHTTPReadinessProbe(AccessPortName, "/readyz", http.StatusOK, http.StatusOK))
+	instrumentedOpts := []e2emon.InstrumentedOption{}
+	caFile := ""
+
+	if o.seaweedOptions.enableTLS {
+		certDir := filepath.Join(f.Dir(), "certs")
+		caDir := filepath.Join(certDir, "CAs")
+		if err := os.MkdirAll(caDir, 0750); err != nil {
+			return &e2emon.InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "create SeaweedFS certificate directory"))}
+		}
+
+		certFile := filepath.Join(certDir, "public.crt")
+		keyFile := filepath.Join(certDir, "private.key")
+		caFile = filepath.Join(caDir, "ca.crt")
+		if err := genCerts(certFile, keyFile, caFile, fmt.Sprintf("%s-%s", env.Name(), name)); err != nil {
+			return &e2emon.InstrumentedRunnable{Runnable: e2e.NewFailedRunnable(name, errors.Wrap(err, "generate SeaweedFS certificates"))}
+		}
+
+		args = append(args, "-s3.cert.file="+certFile, "-s3.key.file="+keyFile)
+		readiness = e2e.NewHTTPSReadinessProbe(AccessPortName, "/readyz", http.StatusOK, http.StatusOK)
+		instrumentedOpts = append(instrumentedOpts, e2emon.WithInstrumentedScheme("https"))
+	}
+
+	envVars := map[string]string{
+		"AWS_ACCESS_KEY_ID":     S3AccessKey,
+		"AWS_SECRET_ACCESS_KEY": S3SecretKey,
+	}
+	if bucket != "" {
+		envVars["S3_BUCKET"] = bucket
+		readiness = &seaweedFSBucketReadinessProbe{
+			readiness: readiness,
+			bucket:    bucket,
+			enableTLS: o.seaweedOptions.enableTLS,
+			caFile:    caFile,
+		}
+	}
+
+	r := f.Init(e2e.StartOptions{
+		Image:     o.image,
+		User:      strconv.Itoa(os.Getuid()),
+		Command:   e2e.NewCommand(args[0], args[1:]...),
+		EnvVars:   envVars,
+		Readiness: readiness,
+		Volumes:   []string{dataDir + ":/data:z"},
+	})
+	return e2emon.AsInstrumented(r, AccessPortName, instrumentedOpts...)
+}
+
+type seaweedFSBucketReadinessProbe struct {
+	readiness e2e.ReadinessProbe
+	bucket    string
+	enableTLS bool
+	caFile    string
+}
+
+// This explicitly checks if bucket exists or not (seaweedfs s3 gateway server might report healthy while bucket creation is still pending, which happens in later stage).
+func (p *seaweedFSBucketReadinessProbe) Ready(runnable e2e.Runnable) error {
+	if err := p.readiness.Ready(runnable); err != nil {
+		return err
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	defer transport.CloseIdleConnections()
+	if p.enableTLS {
+		caPEM, err := os.ReadFile(p.caFile)
+		if err != nil {
+			return errors.Wrap(err, "read SeaweedFS CA certificate")
+		}
+		rootCAs := x509.NewCertPool()
+		if !rootCAs.AppendCertsFromPEM(caPEM) {
+			return errors.New("parse SeaweedFS CA certificate")
+		}
+		transport.TLSClientConfig = &tls.Config{RootCAs: rootCAs}
+	}
+
+	client, err := minio.New(runnable.Endpoint(AccessPortName), &minio.Options{
+		Creds:     credentials.NewStaticV4(S3AccessKey, S3SecretKey, ""),
+		Secure:    p.enableTLS,
+		Transport: transport,
+	})
+	if err != nil {
+		return errors.Wrap(err, "create SeaweedFS readiness client")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	exists, err := client.BucketExists(ctx, p.bucket)
+	if err != nil {
+		return errors.Wrap(err, "check SeaweedFS bucket")
+	}
+	if !exists {
+		return errors.Newf("SeaweedFS bucket %q does not exist", p.bucket)
+	}
+	return nil
 }

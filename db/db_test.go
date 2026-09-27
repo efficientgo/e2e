@@ -25,8 +25,8 @@ func TestMinio(t *testing.T) {
 	testutil.Ok(t, e2e.StartAndWaitReady(minioContainer))
 
 	endpoint := minioContainer.Endpoint("http")
-	accessKeyID := MinioAccessKey
-	secretAccessKey := MinioSecretKey
+	accessKeyID := S3AccessKey
+	secretAccessKey := S3SecretKey
 	minioClient, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
 		Secure: false,
@@ -37,4 +37,28 @@ func TestMinio(t *testing.T) {
 		t,
 		minioClient.MakeBucket(context.Background(), "test-bucket", minio.MakeBucketOptions{}),
 	)
+}
+
+func TestSeaweedFS(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		secure bool
+	}{
+		{name: "HTTP"},
+		{name: "HTTPS", secure: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, err := e2e.New()
+			testutil.Ok(t, err)
+			t.Cleanup(e.Close)
+
+			opts := []Option{}
+			if tc.secure {
+				opts = append(opts, WithSeaweedFSTLS())
+			}
+			const bucket = "test-bucket"
+			seaweedFS := NewSeaweedFS(e, "seaweedfs", bucket, opts...)
+			testutil.Ok(t, e2e.StartAndWaitReady(seaweedFS))
+		})
+	}
 }
