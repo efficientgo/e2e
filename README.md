@@ -191,7 +191,7 @@ For runnables that are both instrumented and profiled you can use [`e2eobs.AsObs
 
 Sometimes tests might fail due to timing problems on highly CPU constrained systems such as GitHub actions. To facilitate fixing these issues, `e2e` supports limiting CPU time allocated to Docker containers through `E2E_DOCKER_CPUS` environment variable:
 
-```go mdox-exec="sed -n '285,288p' env_docker.go"
+```go mdox-exec="sed -n '296,299p' env_docker.go"
 	dockerCPUsEnv := os.Getenv(dockerCPUEnvName)
 	if dockerCPUsEnv != "" {
 		dockerCPUsParam = dockerCPUsEnv
