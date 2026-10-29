@@ -83,7 +83,7 @@ type Environment interface {
 	Runnable(name string) RunnableBuilder
 	// AddListener registers given listener to be notified on environment runnable changes.
 	AddListener(listener EnvironmentListener)
-	// AddCloser registers function to be invoked on close, before all containers are sent kill signal.
+	// AddCloser registers function to be invoked on close, before all containers are stopped.
 	AddCloser(func())
 	// Close shutdowns isolated environment and cleans its resources.
 	Close()
