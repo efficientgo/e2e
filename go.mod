@@ -1,6 +1,6 @@
 module github.com/efficientgo/e2e
 
-go 1.24.0
+go 1.26.0
 
 require (
 	github.com/efficientgo/core v1.0.0-rc.0
