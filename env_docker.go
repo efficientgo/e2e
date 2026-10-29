@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/efficientgo/e2e/host"
@@ -47,8 +48,12 @@ type DockerEnvironment struct {
 	cpus          string
 
 	registered map[string]struct{}
-	listeners  []EnvironmentListener
-	started    []Runnable
+
+	mutex sync.Mutex
+	// Access to the following fields must be guarded
+	// by a mutex, as close() stops runnables concurrently.
+	listeners []EnvironmentListener
+	started   []Runnable
 
 	verbose bool
 	closers []func()
@@ -198,6 +203,8 @@ func (e *DockerEnvironment) Runnable(name string) RunnableBuilder {
 
 // AddListener registers given listener to be notified on environment runnable changes.
 func (e *DockerEnvironment) AddListener(listener EnvironmentListener) {
+	defer e.mutex.Unlock()
+	e.mutex.Lock()
 	e.listeners = append(e.listeners, listener)
 }
 
@@ -242,6 +249,8 @@ func (e *DockerEnvironment) register(name string) {
 }
 
 func (e *DockerEnvironment) registerStarted(r Runnable) error {
+	defer e.mutex.Unlock()
+	e.mutex.Lock()
 	e.started = append(e.started, r)
 
 	for _, l := range e.listeners {
@@ -253,6 +262,8 @@ func (e *DockerEnvironment) registerStarted(r Runnable) error {
 }
 
 func (e *DockerEnvironment) registerStopped(name string) error {
+	defer e.mutex.Unlock()
+	e.mutex.Lock()
 	for i, r := range e.started {
 		if r.Name() == name {
 			e.started = append(e.started[:i], e.started[i+1:]...)
@@ -775,13 +786,26 @@ func (e *DockerEnvironment) close() {
 		return
 	}
 
-	// Kill the services in the opposite order.
-	for i := len(e.started) - 1; i >= 0; i-- {
-		n := e.started[i].Name()
-		if err := e.started[i].Kill(); err != nil {
-			_ = e.logger.Log("Unable to kill service", n, ":", err.Error())
-		}
+	// Stop the services gracefully, so that they can e.g. flush coverage data on exit. Do it in
+	// parallel, as Stop waits up to 30s before killing services that ignore SIGTERM.
+	e.mutex.Lock()
+	started := append([]Runnable(nil), e.started...)
+	e.mutex.Unlock()
+
+	var wg sync.WaitGroup
+	for _, r := range started {
+		wg.Add(1)
+		go func(r Runnable) {
+			defer wg.Done()
+			if err := r.Stop(); err != nil {
+				_ = e.logger.Log("Unable to stop service", r.Name(), ":", err.Error())
+				if err := r.Kill(); err != nil {
+					_ = e.logger.Log("Unable to kill service", r.Name(), ":", err.Error())
+				}
+			}
+		}(r)
 	}
+	wg.Wait()
 
 	// Ensure there are no leftover containers.
 	if out, err := e.exec(
